@@ -71,6 +71,7 @@ test-driver
 tests/test_*
 !tests/test_*.cpp
 !tests/testdata/*.pcap
+!externs/Makefile
 *.log
 *.trs
 config.guess
