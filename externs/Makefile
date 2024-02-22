@@ -1,4 +1,4 @@
-LIBS = hello_world.so
+LIBS = hello_world.so ipfix.so
 
 CXX = g++
 CXXFLAGS = -Wall -Wextra -g -O2 -fPIC
