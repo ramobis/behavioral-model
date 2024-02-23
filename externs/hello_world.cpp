@@ -16,9 +16,5 @@
 #include <bm/bm_sim/extern.h>
 
 // Hello World extern function
-void hello_world(){
-	std::cout << "IPFIX EXTERN: Hello World" << std::endl;
-}
+void hello_world() { std::cout << "IPFIX EXTERN: Hello World" << std::endl; }
 BM_REGISTER_EXTERN_FUNCTION(hello_world);
-
-

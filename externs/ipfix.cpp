@@ -19,30 +19,31 @@
 #include <bm/bm_sim/data.h>
 #include <bm/bm_sim/extern.h>
 
-
-struct CacheEntry
-{
-    bm::Data indicatorValue;
-    long numPackets;
+struct CacheEntry {
+  bm::Data indicatorValue;
+  long numPackets;
 };
-
 
 std::map<bm::Data, CacheEntry> cache;
 
 // Add PEI value to flow cache entry
-void add_flow_data(const bm::Data & flowLabel, const bm::Data & peiVal) {
-	auto it = cache.find((flowLabel));
+void add_flow_data(const bm::Data &flowLabel, const bm::Data &peiVal) {
+  auto it = cache.find((flowLabel));
   if (it != cache.end()) {
-		cache[flowLabel].indicatorValue.add(cache[flowLabel].indicatorValue, peiVal);
-		cache[flowLabel].numPackets++;
+    cache[flowLabel].indicatorValue.add(cache[flowLabel].indicatorValue,
+                                        peiVal);
+    cache[flowLabel].numPackets++;
   } else {
-		cache[flowLabel].indicatorValue = peiVal;
-		cache[flowLabel].numPackets = 1;
+    cache[flowLabel].indicatorValue = peiVal;
+    cache[flowLabel].numPackets = 1;
   }
 
-	// Iterate over the map and print each key-value pair
-  for (const auto& pair : cache) {
-        std::cout << "IPFIX EXTERN: Key: 0x" << std::hex << pair.first << ", Value: Indicator Value = 0x" << pair.second.indicatorValue << " / Number of Packets = 0x" << pair.second.numPackets << std::endl;
-    }
+  // Iterate over the map and print each key-value pair
+  for (const auto &pair : cache) {
+    std::cout << "IPFIX EXTERN: Key: 0x" << std::hex << pair.first
+              << ", Value: Indicator Value = 0x" << pair.second.indicatorValue
+              << " / Number of Packets = 0x" << pair.second.numPackets
+              << std::endl;
+  }
 }
 BM_REGISTER_EXTERN_FUNCTION(add_flow_data, const bm::Data &, const bm::Data &);
