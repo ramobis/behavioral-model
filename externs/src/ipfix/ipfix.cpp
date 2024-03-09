@@ -13,54 +13,27 @@
  * limitations under the License.
  */
 
-#include <bm/bm_sim/bignum.h>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <ctime>
 #include <iostream>
 #include <map>
 #include <thread>
 
+#include <bm/bm_sim/bignum.h>
 #include <bm/bm_sim/data.h>
 #include <bm/bm_sim/extern.h>
+
+#include "ipfix.h"
 
 #define FLOW_MAX_IDLE_TIME 10 // in seconds
 #define INDICATOR_ID_PEI 0xFF
 #define INDICATOR_ID_MIN_HEI 0xFE
 #define INDICATOR_ID_MAX_HEI 0xFD
 
-struct FlowRecord {
-  uint32_t flowLabel;
-  bm::Data srcIPv6;
-  bm::Data dstIPv6;
-  uint32_t indicatorID;
-  uint64_t indicatorValue;
-  uint64_t numPackets;
-  uint32_t flowStartTime; // Unix Timestamp
-  uint32_t flowEndTime;   // Unix Timestamp
-};
-
-typedef std::map<bm::Data, FlowRecord> FlowRecordCache_t;
+bool updateThreadStarted = false;
 std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
 std::mutex idCacheMapMutex;
-
-bool updateThreadStarted = false;
-
-// Overloaded operator<< for FlowRecord
-std::ostream &operator<<(std::ostream &os, const FlowRecord &record) {
-  os << "Flow Label: 0x" << std::hex << record.flowLabel << std::endl;
-  os << "Source IPv6: " << std::hex << record.srcIPv6 << std::endl;
-  os << "Destination IPv6: " << std::hex << record.dstIPv6 << std::endl;
-  os << "Indicator ID: 0x" << record.indicatorID << std::endl;
-  os << "Indicator Value: 0x" << std::hex << record.indicatorValue << std::endl;
-  os << "Number of Packets: " << std::dec << record.numPackets << std::endl;
-  os << "Flow Start Time: " << std::dec << record.flowStartTime
-     << " (Unix Timestamp)" << std::endl;
-  os << "Flow End Time: " << std::dec << record.flowEndTime
-     << " (Unix Timestamp)" << std::endl;
-  return os;
-}
 
 uint32_t getCurrentTimestamp() {
   // Get the current system time
@@ -86,22 +59,6 @@ void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabel,
   dstRecord.flowEndTime = dstRecord.flowStartTime;
 }
 
-uint64_t get_updated_indicator_value(FlowRecord &record,
-                                     uint64_t currentValue) {
-  switch (record.indicatorID) {
-  case INDICATOR_ID_PEI:
-    return record.indicatorValue + currentValue;
-  // case INDICATOR_ID_MAX_HEI:
-  //   return (record.indicatorValue > currentValue) ? record.indicatorValue :
-  //   currentValue;
-  // case INDICATOR_ID_MIN_HEI:
-  //   return (record.indicatorValue < currentValue) ? record.indicatorValue :
-  //   currentValue;
-  default:
-    return 0;
-  }
-}
-
 void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
   std::lock_guard<std::mutex> guard(idCacheMapMutex);
   FlowRecordCache_t *cache;
@@ -118,8 +75,7 @@ void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
   if (j == cache->end()) {
     cache->insert(std::make_pair(flowKey, record));
   } else {
-    cache->at(flowKey).indicatorValue =
-        get_updated_indicator_value(record, cache->at(flowKey).indicatorValue);
+    cache->at(flowKey).indicatorValue += record.indicatorValue;
     cache->at(flowKey).numPackets++;
     cache->at(flowKey).flowEndTime = getCurrentTimestamp();
   }
@@ -139,14 +95,6 @@ FlowRecordCache_t get_expired_flow_records(FlowRecordCache_t *cache) {
     }
   }
   return expiredRecords;
-}
-
-void export_flow_records(FlowRecordCache_t &records) {
-  for (auto i = records.begin(); i != records.end(); ++i) {
-    auto record = i->second;
-    std::cout << "IPFIX EXPORT: Exporting record:" << std::endl;
-    std::cout << record << std::endl;
-  }
 }
 
 void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records) {
@@ -197,12 +145,13 @@ void process_packet_flow_data(const bm::Data &flowKey,
   FlowRecord record;
   init_flow_record(record, flowLabel, srcIPv6, dstIPv6, indicatorID,
                    indicatorValue);
+
   update_flow_record(flowKey, record);
 
   if (!updateThreadStarted) {
     updateThreadStarted = true;
-    std::thread backgroundCacheManager(manage_flow_record_cache);
-    backgroundCacheManager.detach();
+    std::thread cacheManager(manage_flow_record_cache);
+    cacheManager.detach();
   }
 }
 BM_REGISTER_EXTERN_FUNCTION(process_packet_flow_data, const bm::Data &,
