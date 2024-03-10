@@ -2,6 +2,41 @@
 
 #include <bm/bm_sim/data.h>
 
+// Sizes are specified in bytes
+#define IPFIX_MESSAGE_HEADER_SIZE 16
+#define IPFIX_DATA_SET_HEADER_SIZE 4
+#define IPFIX_DATA_SET_FLOW_RECORD_SIZE 64
+#define IPFIX_VERSION_NUMBER 0x000a
+#define IPFIX_COLLECTOR_IP "10.0.2.2"
+
+// IPFIX Message Header
+struct MessageHeader {
+  uint16_t versionNumber;
+  uint16_t length;
+  uint32_t exportTime;
+  uint32_t sequenceNumber;
+  uint32_t observationDomainID;
+};
+
+// IPFIX Data Set Header
+struct DataSetHeader {
+  uint16_t setID;
+  uint16_t length;
+};
+
+// IPFIX Data Set for flow based indicator data export
+struct FlowRecordDataSet {
+  uint32_t flowLabel;
+  unsigned char srcIPv6[16];
+  unsigned char dstIPv6[16];
+  uint32_t indicatorID;
+  uint64_t indicatorValue;
+  uint64_t numPackets;
+  uint32_t flowStartTime; // Unix Timestamp
+  uint32_t flowEndTime;   // Unix Timestamp
+};
+
+// IPFIX Data Set for flow based indicator data export
 struct FlowRecord {
   uint32_t flowLabel;
   unsigned char *srcIPv6;
@@ -23,6 +58,15 @@ uint32_t getCurrentTimestamp();
 
 // Print an IPv6 address stored in a bytes array
 void printIPv6Address(const unsigned char *ipv6Address);
+
+// Returns the total size of the IPFIX flow record export message
+uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records);
+
+// Returns the intialized raw payload which can be passed to libtins as raw payload
+uint8_t * get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader, DataSetHeader &dheader);
+
+// Returns the node id of the exporting node
+uint32_t get_observation_domain_id();
 
 // Initializes the FlowRecord datastructure with the values obtained from the
 // data plane.

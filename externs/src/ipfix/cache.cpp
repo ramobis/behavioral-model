@@ -34,7 +34,11 @@
 bool updateThreadStarted = false;
 std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
 std::mutex idCacheMapMutex;
+uint32_t observationDomainID;
 
+uint32_t get_observation_domain_id() {
+  return observationDomainID;
+}
 
 void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabel,
                       const bm::Data &srcIPv6, const bm::Data &dstIPv6,
@@ -91,6 +95,8 @@ void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Deleting record:" << std::endl;
     std::cout << record << std::endl;
+    delete i->second.srcIPv6;
+    delete i->second.dstIPv6;
     cache->erase(i->first);
   }
 }
@@ -126,7 +132,8 @@ void manage_flow_record_cache() {
 }
 
 //! Extern function called by the dataplane
-void process_packet_flow_data(const bm::Data &flowKey,
+void process_packet_flow_data(const bm::Data &nodeID,
+                              const bm::Data &flowKey,
                               const bm::Data &flowLabel,
                               const bm::Data &srcIPv6, const bm::Data &dstIPv6,
                               const bm::Data &indicatorID,
@@ -138,6 +145,7 @@ void process_packet_flow_data(const bm::Data &flowKey,
   update_flow_record(flowKey, record);
 
   if (!updateThreadStarted) {
+    observationDomainID = nodeID.get_int();
     updateThreadStarted = true;
     std::thread cacheManager(manage_flow_record_cache);
     cacheManager.detach();
@@ -146,4 +154,4 @@ void process_packet_flow_data(const bm::Data &flowKey,
 BM_REGISTER_EXTERN_FUNCTION(process_packet_flow_data, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
-                            const bm::Data &);
+                            const bm::Data &, const bm::Data &);
