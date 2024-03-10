@@ -206,6 +206,19 @@ class Data {
     return value.convert_to<int>();
   }
 
+  // ! Get the value of Data as a bytes array. This function allocates memory on
+  // the heap. Make sure to call delete once the bytes array is not needed
+  // anymore.
+  unsigned char *get_bytes(size_t size) const {
+    char dst[size];
+    unsigned char *bytes = new unsigned char[size];
+    bm::bignum::export_bytes(dst, size, value);
+    for (unsigned int i = 0; i < size; i++) {
+      bytes[i] = static_cast<unsigned char>(dst[i]);
+    }
+    return bytes;
+  }
+
   //! get the binary representation of Data has a string. There is no sign
   //! support.
   std::string get_string() const {
