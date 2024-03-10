@@ -35,23 +35,14 @@ bool updateThreadStarted = false;
 std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
 std::mutex idCacheMapMutex;
 
-uint32_t getCurrentTimestamp() {
-  // Get the current system time
-  auto now = std::chrono::system_clock::now();
-  // Convert the time point to a time_t object
-  std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
-  // Cast the time_t value to uint32_t
-  uint32_t timestamp = static_cast<uint32_t>(currentTime);
-  return timestamp;
-}
 
 void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabel,
                       const bm::Data &srcIPv6, const bm::Data &dstIPv6,
                       const bm::Data &indicatorID,
                       const bm::Data &indicatorValue) {
   dstRecord.flowLabel = flowLabel.get_uint();
-  dstRecord.srcIPv6.set(srcIPv6);
-  dstRecord.dstIPv6.set(dstIPv6);
+  dstRecord.srcIPv6 = srcIPv6.get_bytes(16);
+  dstRecord.dstIPv6 = dstIPv6.get_bytes(16);
   dstRecord.indicatorID = indicatorID.get_uint();
   dstRecord.indicatorValue = indicatorValue.get_uint64();
   dstRecord.numPackets = 1;
@@ -82,9 +73,8 @@ void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
   std::cout << cache->at(flowKey) << std::endl;
 }
 
-FlowRecordCache_t get_expired_flow_records(FlowRecordCache_t *cache) {
-  FlowRecordCache_t expiredRecords;
-  for (auto i = cache->begin(); i != cache->end(); ++i) {
+void set_expired_flow_records(FlowRecordCache_t *records, FlowRecordCache_t &expiredRecords) {
+  for (auto i = records->begin(); i != records->end(); ++i) {
     auto record = i->second;
     if (getCurrentTimestamp() - record.flowEndTime > FLOW_MAX_IDLE_TIME) {
       std::cout
@@ -94,7 +84,6 @@ FlowRecordCache_t get_expired_flow_records(FlowRecordCache_t *cache) {
       expiredRecords[i->first] = i->second;
     }
   }
-  return expiredRecords;
 }
 
 void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records) {
@@ -124,7 +113,7 @@ void manage_flow_record_cache() {
     // Iterate over all keys and corresponding values
     for (auto i = idCacheMap.begin(); i != idCacheMap.end(); i++) {
       std::lock_guard<std::mutex> guard(idCacheMapMutex);
-      expiredRecords = get_expired_flow_records(i->second);
+      set_expired_flow_records(i->second, expiredRecords);
       export_flow_records(expiredRecords);
       delete_flow_records(i->second, expiredRecords);
       if (i->second->empty()) {
