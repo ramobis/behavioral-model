@@ -12,7 +12,7 @@ all: $(OBJDIR)/$(TARGET).so
 
 # Rule to compile each source file into an object file
 $(OBJDIR)/$(TARGET).so: $(SOURCES)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -ltins
 
 # Clean rule
 clean:
