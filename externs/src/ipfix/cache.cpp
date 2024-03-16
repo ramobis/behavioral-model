@@ -36,51 +36,52 @@ std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
 std::mutex idCacheMapMutex;
 uint32_t observationDomainID;
 
-uint32_t get_observation_domain_id() {
-  return observationDomainID;
-}
+uint32_t get_observation_domain_id() { return observationDomainID; }
 
-void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabel,
-                      const bm::Data &srcIPv6, const bm::Data &dstIPv6,
-                      const bm::Data &indicatorID,
-                      const bm::Data &indicatorValue) {
-  dstRecord.flowLabel = flowLabel.get_uint();
-  dstRecord.srcIPv6 = srcIPv6.get_bytes(16);
-  dstRecord.dstIPv6 = dstIPv6.get_bytes(16);
-  dstRecord.indicatorID = indicatorID.get_uint();
-  dstRecord.indicatorValue = indicatorValue.get_uint64();
-  dstRecord.numPackets = 1;
-  dstRecord.flowStartTime = getCurrentTimestamp();
-  dstRecord.flowEndTime = dstRecord.flowStartTime;
+void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
+                      const bm::Data &sourceIPv6Address,
+                      const bm::Data &destinationIPv6Address,
+                      const bm::Data &efficiencyIndicatorID,
+                      const bm::Data &efficiencyIndicatorValue) {
+  dstRecord.flowLabelIPv6 = flowLabelIPv6.get_uint();
+  dstRecord.sourceIPv6Address = sourceIPv6Address.get_bytes(16);
+  dstRecord.destinationIPv6Address = destinationIPv6Address.get_bytes(16);
+  dstRecord.efficiencyIndicatorID = efficiencyIndicatorID.get_uint();
+  dstRecord.efficiencyIndicatorValue = efficiencyIndicatorValue.get_uint64();
+  dstRecord.packetDeltaCount = 1;
+  dstRecord.flowStartSeconds = getCurrentTimestamp();
+  dstRecord.flowEndSeconds = dstRecord.flowStartSeconds;
 }
 
 void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
   std::lock_guard<std::mutex> guard(idCacheMapMutex);
   FlowRecordCache_t *cache;
-  auto i = idCacheMap.find((record.indicatorID));
+  auto i = idCacheMap.find((record.efficiencyIndicatorID));
   // The cache for the specific indicator ID does not exist
   if (i == idCacheMap.end()) {
     cache = new FlowRecordCache_t; // allocate memory on the heap for new cache
-    idCacheMap[record.indicatorID] = cache;
+    idCacheMap[record.efficiencyIndicatorID] = cache;
   } else {
-    cache = idCacheMap[record.indicatorID];
+    cache = idCacheMap[record.efficiencyIndicatorID];
   }
   auto j = cache->find(flowKey);
   // There is no entry for the specific flow
   if (j == cache->end()) {
     cache->insert(std::make_pair(flowKey, record));
   } else {
-    cache->at(flowKey).indicatorValue += record.indicatorValue;
-    cache->at(flowKey).numPackets++;
-    cache->at(flowKey).flowEndTime = getCurrentTimestamp();
+    cache->at(flowKey).efficiencyIndicatorValue +=
+        record.efficiencyIndicatorValue;
+    cache->at(flowKey).packetDeltaCount++;
+    cache->at(flowKey).flowEndSeconds = getCurrentTimestamp();
   }
   std::cout << cache->at(flowKey) << std::endl;
 }
 
-void set_expired_flow_records(FlowRecordCache_t *records, FlowRecordCache_t &expiredRecords) {
+void set_expired_flow_records(FlowRecordCache_t *records,
+                              FlowRecordCache_t &expiredRecords) {
   for (auto i = records->begin(); i != records->end(); ++i) {
     auto record = i->second;
-    if (getCurrentTimestamp() - record.flowEndTime > FLOW_MAX_IDLE_TIME) {
+    if (getCurrentTimestamp() - record.flowEndSeconds > FLOW_MAX_IDLE_TIME) {
       std::cout
           << "IPFIX EXPORT: Found expired record - WRITING IN EXPIRED MAP:"
           << std::endl;
@@ -95,8 +96,8 @@ void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Deleting record:" << std::endl;
     std::cout << record << std::endl;
-    delete i->second.srcIPv6;
-    delete i->second.dstIPv6;
+    delete i->second.sourceIPv6Address;
+    delete i->second.destinationIPv6Address;
     cache->erase(i->first);
   }
 }
@@ -132,15 +133,16 @@ void manage_flow_record_cache() {
 }
 
 //! Extern function called by the dataplane
-void process_packet_flow_data(const bm::Data &nodeID,
-                              const bm::Data &flowKey,
-                              const bm::Data &flowLabel,
-                              const bm::Data &srcIPv6, const bm::Data &dstIPv6,
-                              const bm::Data &indicatorID,
-                              const bm::Data &indicatorValue) {
+void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
+                              const bm::Data &flowLabelIPv6,
+                              const bm::Data &sourceIPv6Address,
+                              const bm::Data &destinationIPv6Address,
+                              const bm::Data &efficiencyIndicatorID,
+                              const bm::Data &efficiencyIndicatorValue) {
   FlowRecord record;
-  init_flow_record(record, flowLabel, srcIPv6, dstIPv6, indicatorID,
-                   indicatorValue);
+  init_flow_record(record, flowLabelIPv6, sourceIPv6Address,
+                   destinationIPv6Address, efficiencyIndicatorID,
+                   efficiencyIndicatorValue);
 
   update_flow_record(flowKey, record);
 

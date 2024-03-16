@@ -1,20 +1,23 @@
 #include "ipfix.h"
-#include <cstddef>
 #include <arpa/inet.h> // For htonl, htons
+#include <cstddef>
 
 // Overloaded operator<< for FlowRecord
 std::ostream &operator<<(std::ostream &os, const FlowRecord &record) {
-  os << "Flow Label: 0x" << std::hex << record.flowLabel << std::endl;
+  os << "Flow Label: 0x" << std::hex << record.flowLabelIPv6 << std::endl;
   os << "Source IPv6: ";
-  printIPv6Address(record.srcIPv6);
+  printIPv6Address(record.sourceIPv6Address);
   os << "Destination IPv6: ";
-  printIPv6Address(record.dstIPv6);
-  os << "Indicator ID: 0x" << std::hex << record.indicatorID << std::endl;
-  os << "Indicator Value: 0x" << std::hex << record.indicatorValue << std::endl;
-  os << "Number of Packets: " << std::dec << record.numPackets << std::endl;
-  os << "Flow Start Time: " << std::dec << record.flowStartTime
+  printIPv6Address(record.destinationIPv6Address);
+  os << "Indicator ID: 0x" << std::hex << record.efficiencyIndicatorID
+     << std::endl;
+  os << "Indicator Value: 0x" << std::hex << record.efficiencyIndicatorValue
+     << std::endl;
+  os << "Number of Packets: " << std::dec << record.packetDeltaCount
+     << std::endl;
+  os << "Flow Start Time: " << std::dec << record.flowStartSeconds
      << " (Unix Timestamp)" << std::endl;
-  os << "Flow End Time: " << std::dec << record.flowEndTime
+  os << "Flow End Time: " << std::dec << record.flowEndSeconds
      << " (Unix Timestamp)" << std::endl;
   return os;
 }
@@ -49,57 +52,61 @@ void printIPv6Address(const unsigned char *ipv6Address) {
   std::cout << std::dec << std::endl; // Reset to decimal output
 }
 
-uint64_t htonll (uint64_t x)
-{
-  #if BYTE_ORDER == BIG_ENDIAN
-    return x;
-  #elif BYTE_ORDER == LITTLE_ENDIAN
-    return __bswap_64(
-  x);
-  #else
-  # error "What kind of system is this?"
-  #endif
+uint64_t htonll(uint64_t x) {
+#if BYTE_ORDER == BIG_ENDIAN
+  return x;
+#elif BYTE_ORDER == LITTLE_ENDIAN
+  return __bswap_64(x);
+#else
+#error "What kind of system is this?"
+#endif
 }
 
 // Function to convert fields of MessageHeader to network byte order
-void convertToNetworkByteOrder(MessageHeader& header) {
-    header.versionNumber = htons(header.versionNumber);
-    header.length = htons(header.length);
-    header.exportTime = htonl(header.exportTime);
-    header.sequenceNumber = htonl(header.sequenceNumber);
-    header.observationDomainID = htonl(header.observationDomainID);
+void convertToNetworkByteOrder(MessageHeader &header) {
+  header.versionNumber = htons(header.versionNumber);
+  header.length = htons(header.length);
+  header.exportTime = htonl(header.exportTime);
+  header.sequenceNumber = htonl(header.sequenceNumber);
+  header.observationDomainID = htonl(header.observationDomainID);
 }
 
 // Function to convert fields of DataSetHeader to network byte order
-void convertToNetworkByteOrder(DataSetHeader& header) {
-    header.setID = htons(header.setID);
-    header.length = htons(header.length);
+void convertToNetworkByteOrder(DataSetHeader &header) {
+  header.setID = htons(header.setID);
+  header.length = htons(header.length);
 }
 
 uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records) {
-  return IPFIX_MESSAGE_HEADER_SIZE + IPFIX_DATA_SET_HEADER_SIZE + records.size() * IPFIX_DATA_SET_FLOW_RECORD_SIZE;
+  return IPFIX_MESSAGE_HEADER_SIZE + IPFIX_DATA_SET_HEADER_SIZE +
+         records.size() * IPFIX_DATA_SET_FLOW_RECORD_SIZE;
 }
 
-void copy_flow_records_to_payload(FlowRecordCache_t &records, uint8_t *payload) {
+void copy_flow_records_to_payload(FlowRecordCache_t &records,
+                                  uint8_t *payload) {
   int dsNum = 0;
   for (auto i = records.begin(); i != records.end(); ++i) {
     FlowRecordDataSet ds;
     FlowRecord record = i->second;
 
     // Initialize data set fields
-    ds.flowLabel = htonl(record.flowLabel);
-    ds.indicatorID = htonl(record.indicatorID);
-    ds.indicatorValue = htonll(record.indicatorValue);
-    ds.numPackets = htonll(record.numPackets);
-    ds.flowStartTime = htonl(record.flowStartTime);
-    ds.flowEndTime = htonl(record.flowEndTime);
+    ds.flowLabelIPv6 = htonl(record.flowLabelIPv6);
+    ds.efficiencyIndicatorID = htonl(record.efficiencyIndicatorID);
+    ds.efficiencyIndicatorValue = htonll(record.efficiencyIndicatorValue);
+    ds.packetDeltaCount = htonll(record.packetDeltaCount);
+    ds.flowStartSeconds = htonl(record.flowStartSeconds);
+    ds.flowEndSeconds = htonl(record.flowEndSeconds);
 
     // Copy IPv6 byte array to struct
-    std::memcpy(ds.srcIPv6, record.srcIPv6, sizeof(ds.srcIPv6));
-    std::memcpy(ds.dstIPv6, record.dstIPv6, sizeof(ds.dstIPv6));
+    std::memcpy(ds.sourceIPv6Address, record.sourceIPv6Address,
+                sizeof(ds.sourceIPv6Address));
+    std::memcpy(ds.destinationIPv6Address, record.destinationIPv6Address,
+                sizeof(ds.destinationIPv6Address));
 
-    // Copy initialized struct to payload with offset depending on the data set number
-    std::memcpy(&payload[dsNum*IPFIX_DATA_SET_FLOW_RECORD_SIZE], &ds, IPFIX_DATA_SET_FLOW_RECORD_SIZE);
+    // Copy initialized struct to payload with offset depending on the data set
+    // number
+    std::memcpy(&payload[dsNum * IPFIX_DATA_SET_FLOW_RECORD_SIZE], &ds,
+                IPFIX_DATA_SET_FLOW_RECORD_SIZE);
     dsNum++;
   }
 }
@@ -114,13 +121,17 @@ void copy_flow_records_to_payload(FlowRecordCache_t &records, uint8_t *payload) 
 //     }
 // }
 
-uint8_t * get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader, DataSetHeader &dheader) {
+uint8_t *get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader,
+                           DataSetHeader &dheader) {
   uint8_t *payload = new uint8_t[mheader.length];
   convertToNetworkByteOrder(mheader);
   convertToNetworkByteOrder(dheader);
   std::memcpy(payload, &mheader, IPFIX_MESSAGE_HEADER_SIZE);
-  std::memcpy(&payload[IPFIX_MESSAGE_HEADER_SIZE], &dheader, IPFIX_DATA_SET_HEADER_SIZE);
-  copy_flow_records_to_payload(records, &payload[IPFIX_MESSAGE_HEADER_SIZE+IPFIX_DATA_SET_HEADER_SIZE]);
+  std::memcpy(&payload[IPFIX_MESSAGE_HEADER_SIZE], &dheader,
+              IPFIX_DATA_SET_HEADER_SIZE);
+  copy_flow_records_to_payload(
+      records,
+      &payload[IPFIX_MESSAGE_HEADER_SIZE + IPFIX_DATA_SET_HEADER_SIZE]);
   // swap_endianness(payload, mheader.length);
   return payload;
 }

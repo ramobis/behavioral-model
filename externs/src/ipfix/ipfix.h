@@ -26,26 +26,26 @@ struct DataSetHeader {
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecordDataSet {
-  uint32_t flowLabel;
-  unsigned char srcIPv6[16];
-  unsigned char dstIPv6[16];
-  uint32_t indicatorID;
-  uint64_t indicatorValue;
-  uint64_t numPackets;
-  uint32_t flowStartTime; // Unix Timestamp
-  uint32_t flowEndTime;   // Unix Timestamp
+  uint32_t flowLabelIPv6;                   // IANA IEID = 31
+  unsigned char sourceIPv6Address[16];      // IANA IEID = 27
+  unsigned char destinationIPv6Address[16]; // IANA IEID = 28
+  uint32_t efficiencyIndicatorID;           // IANA IEID = 5050
+  uint64_t efficiencyIndicatorValue;        // IANA IEID = 5051
+  uint64_t packetDeltaCount;                // IANA IEID = 2
+  uint32_t flowStartSeconds;                // IANA IEID = 150
+  uint32_t flowEndSeconds;                  // IANA IEID = 151
 };
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecord {
-  uint32_t flowLabel;
-  unsigned char *srcIPv6;
-  unsigned char *dstIPv6;
-  uint32_t indicatorID;
-  uint64_t indicatorValue;
-  uint64_t numPackets;
-  uint32_t flowStartTime; // Unix Timestamp
-  uint32_t flowEndTime;   // Unix Timestamp
+  uint32_t flowLabelIPv6;
+  unsigned char *sourceIPv6Address;
+  unsigned char *destinationIPv6Address;
+  uint32_t efficiencyIndicatorID;
+  uint64_t efficiencyIndicatorValue;
+  uint64_t packetDeltaCount;
+  uint32_t flowStartSeconds;
+  uint32_t flowEndSeconds;
 };
 
 typedef std::map<bm::Data, FlowRecord> FlowRecordCache_t;
@@ -62,18 +62,21 @@ void printIPv6Address(const unsigned char *ipv6Address);
 // Returns the total size of the IPFIX flow record export message
 uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records);
 
-// Returns the intialized raw payload which can be passed to libtins as raw payload
-uint8_t * get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader, DataSetHeader &dheader);
+// Returns the intialized raw payload which can be passed to libtins as raw
+// payload
+uint8_t *get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader,
+                           DataSetHeader &dheader);
 
 // Returns the node id of the exporting node
 uint32_t get_observation_domain_id();
 
 // Initializes the FlowRecord datastructure with the values obtained from the
 // data plane.
-void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabel,
-                      const bm::Data &srcIPv6, const bm::Data &dstIPv6,
-                      const bm::Data &indicatorID,
-                      const bm::Data &indicatorValue);
+void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
+                      const bm::Data &sourceIPv6Address,
+                      const bm::Data &destinationIPv6Address,
+                      const bm::Data &efficiencyIndicatorID,
+                      const bm::Data &efficiencyIndicatorValue);
 
 // Update the values of a given flow in the cache. In case of a new flow this
 // function adds a new record entry to the cache otherwise the existing entry is
@@ -98,11 +101,12 @@ void manage_flow_record_cache();
 // Extern function called by the data plane. Starts the detached cache
 // management process if not already started and updates the cache with the
 // packet data received from the data plane.
-void process_packet_flow_data(const bm::Data &flowKey,
-                              const bm::Data &flowLabel,
-                              const bm::Data &srcIPv6, const bm::Data &dstIPv6,
-                              const bm::Data &indicatorID,
-                              const bm::Data &indicatorValue);
+void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
+                              const bm::Data &flowLabelIPv6,
+                              const bm::Data &sourceIPv6Address,
+                              const bm::Data &destinationIPv6Address,
+                              const bm::Data &efficiencyIndicatorID,
+                              const bm::Data &efficiencyIndicatorValue);
 
 // Exports expired flow records in the IPFIX format and sends a UDP packet to
 // the configured collector.
