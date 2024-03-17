@@ -3,11 +3,11 @@
 #include <bm/bm_sim/data.h>
 
 // Sizes are specified in bytes
-#define IPFIX_MESSAGE_HEADER_SIZE 16
-#define IPFIX_DATA_SET_HEADER_SIZE 4
-#define IPFIX_DATA_SET_FLOW_RECORD_SIZE 68
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
+#define IPFIX_TEMPLATE_TRANSMISSION_INTERVAL 20
+#define IPFIX_FLOW_RECORD_SET_ID 256
+#define IPFIX_TEMPLATE_SET_ID 2
 
 // IPFIX Message Header
 struct MessageHeader {
@@ -16,13 +16,25 @@ struct MessageHeader {
   uint32_t exportTime;
   uint32_t sequenceNumber;
   uint32_t observationDomainID;
-};
+} __attribute__((packed));
+
+// IPFIX Template Header
+struct TemplateRecordHeader {
+  uint16_t templateID;
+  uint16_t fieldCount;
+} __attribute__((packed));
 
 // IPFIX Data Set Header
 struct SetHeader {
   uint16_t setID;
   uint16_t length;
-};
+} __attribute__((packed));
+
+// IPFIX IANA assigned IEID template record
+struct TemplateRecord {
+  uint16_t informationElementID;
+  uint16_t fieldLength;
+} __attribute__((packed));
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecordDataSet {
@@ -36,7 +48,7 @@ struct FlowRecordDataSet {
   uint64_t packetDeltaCount;                // IANA IEID = 2
   uint32_t flowStartSeconds;                // IANA IEID = 150
   uint32_t flowEndSeconds;                  // IANA IEID = 151
-};
+} __attribute__((packed));
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecord {
@@ -53,6 +65,7 @@ struct FlowRecord {
 };
 
 typedef std::map<bm::Data, FlowRecord> FlowRecordCache_t;
+typedef std::map<uint16_t, std::list<TemplateRecord>> TemplateSets_t;
 
 // Overloaded operator<< for FlowRecord
 std::ostream &operator<<(std::ostream &os, const FlowRecord &record);
@@ -65,11 +78,13 @@ void printIPv6Address(const unsigned char *ipv6Address);
 
 // Returns the total size of the IPFIX flow record export message
 uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records);
-
+uint16_t get_ipfix_template_message_size(TemplateSets_t &sets);
+void send_ipfix_packet(uint8_t *payload, size_t size);
 // Returns the intialized raw payload which can be passed to libtins as raw
 // payload
-uint8_t *get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader,
-                           SetHeader &dheader);
+uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size);
+
+uint8_t *get_ipfix_payload(TemplateSets_t &sets, size_t size);
 
 // Returns the node id of the exporting node
 uint32_t get_observation_domain_id();
@@ -118,4 +133,24 @@ void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
 
 // Exports expired flow records in the IPFIX format and sends a UDP packet to
 // the configured collector.
-void export_flow_records(FlowRecordCache_t &records);
+void export_flow_records_data_set(FlowRecordCache_t &records);
+void export_template_sets();
+
+// Initializes the first 2 Bytes of an ipfix message payload with the ipfix
+// message header
+void initialize_message_header_in_payload(uint8_t *payload, size_t size);
+
+// Convert MessageHeader from host to network byte order
+void hton(MessageHeader &header);
+
+// Convert SetHeader from host to network byte order
+void hton(SetHeader &header);
+
+// Convert TemplateRecordHeader from host to network byte order
+void hton(TemplateRecordHeader &header);
+
+// Convert TemplateRecord from host to network byte order
+void hton(TemplateRecord &record);
+
+// Convert FlowRecordDataSet from host to network byte order
+void hton(FlowRecordDataSet &record);

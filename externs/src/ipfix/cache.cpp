@@ -31,7 +31,7 @@
 #define INDICATOR_ID_MIN_HEI 0xFE
 #define INDICATOR_ID_MAX_HEI 0xFD
 
-bool updateThreadStarted = false;
+bool bgThreadsStarted = false;
 std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
 std::mutex idCacheMapMutex;
 uint32_t observationDomainID;
@@ -125,7 +125,7 @@ void manage_flow_record_cache() {
     for (auto i = idCacheMap.begin(); i != idCacheMap.end(); i++) {
       std::lock_guard<std::mutex> guard(idCacheMapMutex);
       set_expired_flow_records(i->second, expiredRecords);
-      export_flow_records(expiredRecords);
+      export_flow_records_data_set(expiredRecords);
       delete_flow_records(i->second, expiredRecords);
       if (i->second->empty()) {
         emptyCacheKeys.insert(i->first);
@@ -153,13 +153,16 @@ void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
 
   update_flow_record(flowKey, record);
 
-  if (!updateThreadStarted) {
+  if (!bgThreadsStarted) {
     observationDomainID = nodeID.get_int();
-    updateThreadStarted = true;
+    bgThreadsStarted = true;
     std::thread cacheManager(manage_flow_record_cache);
+    std::thread templateExporter(export_template_sets);
     cacheManager.detach();
+    templateExporter.detach();
   }
 }
+
 BM_REGISTER_EXTERN_FUNCTION(process_packet_flow_data, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
