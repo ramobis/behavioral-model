@@ -194,6 +194,12 @@ class Data {
     return value.convert_to<unsigned int>();
   }
 
+  //! Get the value of Data has a `uint16_t`
+  uint16_t get_uint16() const {
+    assert(arith);
+    return value.convert_to<uint16_t>();
+  }
+
   //! Get the value of Data has a `uint64_t`
   uint64_t get_uint64() const {
     assert(arith);
