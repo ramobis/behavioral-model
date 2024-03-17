@@ -53,8 +53,8 @@ void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
   dstRecord.efficiencyIndicatorID = efficiencyIndicatorID.get_uint();
   dstRecord.efficiencyIndicatorValue = efficiencyIndicatorValue.get_uint64();
   dstRecord.packetDeltaCount = 1;
-  dstRecord.flowStartSeconds = getCurrentTimestamp();
-  dstRecord.flowEndSeconds = dstRecord.flowStartSeconds;
+  dstRecord.flowStartMilliseconds = timeSinceEpochMillisec();
+  dstRecord.flowEndMilliseconds = dstRecord.flowStartMilliseconds;
 }
 
 void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
@@ -76,7 +76,7 @@ void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
     cache->at(flowKey).efficiencyIndicatorValue +=
         record.efficiencyIndicatorValue;
     cache->at(flowKey).packetDeltaCount++;
-    cache->at(flowKey).flowEndSeconds = getCurrentTimestamp();
+    cache->at(flowKey).flowEndMilliseconds = timeSinceEpochMillisec();
   }
   std::cout << cache->at(flowKey) << std::endl;
 }
@@ -85,7 +85,7 @@ void set_expired_flow_records(FlowRecordCache_t *records,
                               FlowRecordCache_t &expiredRecords) {
   for (auto i = records->begin(); i != records->end(); ++i) {
     auto record = i->second;
-    if (getCurrentTimestamp() - record.flowEndSeconds > FLOW_MAX_IDLE_TIME) {
+    if (timeSinceEpochMillisec() - record.flowEndMilliseconds > FLOW_MAX_IDLE_TIME) {
       std::cout
           << "IPFIX EXPORT: Found expired record - WRITING IN EXPIRED MAP:"
           << std::endl;

@@ -46,8 +46,8 @@ struct FlowRecordDataSet {
   uint32_t efficiencyIndicatorID;           // IANA IEID = 5050
   uint64_t efficiencyIndicatorValue;        // IANA IEID = 5051
   uint64_t packetDeltaCount;                // IANA IEID = 2
-  uint32_t flowStartSeconds;                // IANA IEID = 150
-  uint32_t flowEndSeconds;                  // IANA IEID = 151
+  uint64_t flowStartMilliseconds;           // IANA IEID = 152
+  uint64_t flowEndMilliseconds;             // IANA IEID = 153
 } __attribute__((packed));
 
 // IPFIX Data Set for flow based indicator data export
@@ -60,8 +60,8 @@ struct FlowRecord {
   uint32_t efficiencyIndicatorID;
   uint64_t efficiencyIndicatorValue;
   uint64_t packetDeltaCount;
-  uint32_t flowStartSeconds;
-  uint32_t flowEndSeconds;
+  uint64_t flowStartMilliseconds;
+  uint64_t flowEndMilliseconds;
 };
 
 typedef std::map<bm::Data, FlowRecord> FlowRecordCache_t;
@@ -70,8 +70,11 @@ typedef std::map<uint16_t, std::list<TemplateRecord>> TemplateSets_t;
 // Overloaded operator<< for FlowRecord
 std::ostream &operator<<(std::ostream &os, const FlowRecord &record);
 
-// Get unix timestamp
-uint32_t getCurrentTimestamp();
+// Get unix timestamp in milliseconds
+uint64_t timeSinceEpochMillisec();
+
+// Get unix timestamp in seconds
+uint32_t timeSinceEpochSec();
 
 // Print an IPv6 address stored in a bytes array
 void printIPv6Address(const unsigned char *ipv6Address);

@@ -45,6 +45,6 @@ void hton(FlowRecordDataSet &record) {
   record.efficiencyIndicatorID = htonl(record.efficiencyIndicatorID);
   record.efficiencyIndicatorValue = htonll(record.efficiencyIndicatorValue);
   record.packetDeltaCount = htonll(record.packetDeltaCount);
-  record.flowStartSeconds = htonl(record.flowStartSeconds);
-  record.flowEndSeconds = htonl(record.flowEndSeconds);
+  record.flowStartMilliseconds = htonll(record.flowStartMilliseconds);
+  record.flowEndMilliseconds = htonll(record.flowEndMilliseconds);
 }

@@ -21,57 +21,64 @@ std::ostream &operator<<(std::ostream &os, const FlowRecord &record) {
      << std::endl;
   os << "Number of Packets: " << std::dec << record.packetDeltaCount
      << std::endl;
-  os << "Flow Start Time: " << std::dec << record.flowStartSeconds
+  os << "Flow Start Time: " << std::dec << record.flowStartMilliseconds
      << " (Unix Timestamp)" << std::endl;
-  os << "Flow End Time: " << std::dec << record.flowEndSeconds
+  os << "Flow End Time: " << std::dec << record.flowEndMilliseconds
      << " (Unix Timestamp)" << std::endl;
   return os;
 }
 
 // Overloaded operator<< for FlowRecordDataSet
-std::ostream& operator<<(std::ostream& os, const FlowRecordDataSet& frds) {
-    os << "FlowLabelIPv6: " << frds.flowLabelIPv6 << std::endl;
-    os << "SourceIPv6Address: ";
-    for (int i = 0; i < 16; ++i) {
-        os << std::hex << std::setw(2) << std::setfill('0') << (int)frds.sourceIPv6Address[i];
-        if (i < 15) os << ":";
-    }
-    os << std::endl;
-    os << "DestinationIPv6Address: ";
-    for (int i = 0; i < 16; ++i) {
-        os << std::hex << std::setw(2) << std::setfill('0') << (int)frds.destinationIPv6Address[i];
-        if (i < 15) os << ":";
-    }
-    os << std::endl;
-    os << "SourceTransportPort: " << frds.sourceTransportPort << std::endl;
-    os << "DestinationTransportPort: " << frds.destinationTransportPort << std::endl;
-    os << "EfficiencyIndicatorID: " << frds.efficiencyIndicatorID << std::endl;
-    os << "EfficiencyIndicatorValue: " << frds.efficiencyIndicatorValue << std::endl;
-    os << "PacketDeltaCount: " << frds.packetDeltaCount << std::endl;
-    os << "FlowStartSeconds: " << frds.flowStartSeconds << std::endl;
-    os << "FlowEndSeconds: " << frds.flowEndSeconds;
-    return os;
+std::ostream &operator<<(std::ostream &os, const FlowRecordDataSet &frds) {
+  os << "FlowLabelIPv6: " << frds.flowLabelIPv6 << std::endl;
+  os << "SourceIPv6Address: ";
+  for (int i = 0; i < 16; ++i) {
+    os << std::hex << std::setw(2) << std::setfill('0')
+       << (int)frds.sourceIPv6Address[i];
+    if (i < 15)
+      os << ":";
+  }
+  os << std::endl;
+  os << "DestinationIPv6Address: ";
+  for (int i = 0; i < 16; ++i) {
+    os << std::hex << std::setw(2) << std::setfill('0')
+       << (int)frds.destinationIPv6Address[i];
+    if (i < 15)
+      os << ":";
+  }
+  os << std::endl;
+  os << "SourceTransportPort: " << frds.sourceTransportPort << std::endl;
+  os << "DestinationTransportPort: " << frds.destinationTransportPort
+     << std::endl;
+  os << "EfficiencyIndicatorID: " << frds.efficiencyIndicatorID << std::endl;
+  os << "EfficiencyIndicatorValue: " << frds.efficiencyIndicatorValue
+     << std::endl;
+  os << "PacketDeltaCount: " << frds.packetDeltaCount << std::endl;
+  os << "FlowStartSeconds: " << frds.flowStartMilliseconds << std::endl;
+  os << "FlowEndSeconds: " << frds.flowEndMilliseconds;
+  return os;
 }
 
-void hexDump(const void* data, size_t dataSize) {
-    const unsigned char* byteData = static_cast<const unsigned char*>(data);
+void hexDump(const void *data, size_t dataSize) {
+  const unsigned char *byteData = static_cast<const unsigned char *>(data);
 
-    for (size_t i = 0; i < dataSize; ++i) {
-        std::cout << std::setw(2) << std::setfill('0') << std::hex << static_cast<int>(byteData[i]) << " ";
-        if ((i + 1) % 16 == 0)
-            std::cout << std::endl;
-    }
-    std::cout << std::endl;
+  for (size_t i = 0; i < dataSize; ++i) {
+    std::cout << std::setw(2) << std::setfill('0') << std::hex
+              << static_cast<int>(byteData[i]) << " ";
+    if ((i + 1) % 16 == 0)
+      std::cout << std::endl;
+  }
+  std::cout << std::endl;
 }
 
-uint32_t getCurrentTimestamp() {
-  // Get the current system time
-  auto now = std::chrono::system_clock::now();
-  // Convert the time point to a time_t object
-  std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
-  // Cast the time_t value to uint32_t
-  uint32_t timestamp = static_cast<uint32_t>(currentTime);
-  return timestamp;
+uint64_t timeSinceEpochMillisec() {
+  using namespace std::chrono;
+  return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+uint32_t timeSinceEpochSec() {
+  using namespace std::chrono;
+  return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
 void printIPv6Address(const unsigned char *ipv6Address) {

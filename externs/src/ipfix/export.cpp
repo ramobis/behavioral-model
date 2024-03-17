@@ -50,8 +50,8 @@ void export_template_sets() {
       TemplateRecord{.informationElementID = 5050, .fieldLength = 4},
       TemplateRecord{.informationElementID = 5051, .fieldLength = 8},
       TemplateRecord{.informationElementID = 2, .fieldLength = 8},
-      TemplateRecord{.informationElementID = 150, .fieldLength = 4},
-      TemplateRecord{.informationElementID = 151, .fieldLength = 4},
+      TemplateRecord{.informationElementID = 152, .fieldLength = 8},
+      TemplateRecord{.informationElementID = 153, .fieldLength = 8},
   };
   // Initialize template set map
   TemplateSets_t ts{{IPFIX_FLOW_RECORD_SET_ID, flowExportTemplateRecords}};
@@ -68,7 +68,7 @@ void initialize_message_header_in_payload(uint8_t *payload, size_t size) {
   MessageHeader mh;
   mh.versionNumber = IPFIX_VERSION_NUMBER;
   mh.length = size;
-  mh.exportTime = getCurrentTimestamp();
+  mh.exportTime = timeSinceEpochSec();
   mh.sequenceNumber = seqNum;
   mh.observationDomainID = get_observation_domain_id();
   hton(mh);
@@ -109,8 +109,8 @@ uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size) {
     ds.efficiencyIndicatorID = r->second.efficiencyIndicatorID;
     ds.efficiencyIndicatorValue = r->second.efficiencyIndicatorValue;
     ds.packetDeltaCount = r->second.packetDeltaCount;
-    ds.flowStartSeconds = r->second.flowStartSeconds;
-    ds.flowEndSeconds = r->second.flowEndSeconds;
+    ds.flowStartMilliseconds = r->second.flowStartMilliseconds;
+    ds.flowEndMilliseconds = r->second.flowEndMilliseconds;
     std::memcpy(ds.sourceIPv6Address, r->second.sourceIPv6Address, 16);
     std::memcpy(ds.destinationIPv6Address, r->second.destinationIPv6Address,
                 16);
