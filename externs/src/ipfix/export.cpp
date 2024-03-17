@@ -41,7 +41,7 @@ void export_flow_records(FlowRecordCache_t &records) {
   }
 
   MessageHeader mheader;
-  DataSetHeader dheader;
+  SetHeader dheader;
 
   mheader.versionNumber = IPFIX_VERSION_NUMBER;
   mheader.length = get_ipfix_flow_record_message_size(records);

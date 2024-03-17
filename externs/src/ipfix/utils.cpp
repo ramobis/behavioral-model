@@ -9,6 +9,10 @@ std::ostream &operator<<(std::ostream &os, const FlowRecord &record) {
   printIPv6Address(record.sourceIPv6Address);
   os << "Destination IPv6: ";
   printIPv6Address(record.destinationIPv6Address);
+  os << "Source Transport Port: " << std::dec << record.sourceTransportPort
+     << std::endl;
+  os << "Destination Transport Port: " << std::dec
+     << record.destinationTransportPort << std::endl;
   os << "Indicator ID: 0x" << std::hex << record.efficiencyIndicatorID
      << std::endl;
   os << "Indicator Value: 0x" << std::hex << record.efficiencyIndicatorValue
@@ -63,7 +67,7 @@ uint64_t htonll(uint64_t x) {
 }
 
 // Function to convert fields of MessageHeader to network byte order
-void convertToNetworkByteOrder(MessageHeader &header) {
+void hton(MessageHeader &header) {
   header.versionNumber = htons(header.versionNumber);
   header.length = htons(header.length);
   header.exportTime = htonl(header.exportTime);
@@ -72,7 +76,7 @@ void convertToNetworkByteOrder(MessageHeader &header) {
 }
 
 // Function to convert fields of DataSetHeader to network byte order
-void convertToNetworkByteOrder(DataSetHeader &header) {
+void hton(SetHeader &header) {
   header.setID = htons(header.setID);
   header.length = htons(header.length);
 }
@@ -91,6 +95,8 @@ void copy_flow_records_to_payload(FlowRecordCache_t &records,
 
     // Initialize data set fields
     ds.flowLabelIPv6 = htonl(record.flowLabelIPv6);
+    ds.sourceTransportPort = htons(record.sourceTransportPort);
+    ds.destinationTransportPort = htons(record.destinationTransportPort);
     ds.efficiencyIndicatorID = htonl(record.efficiencyIndicatorID);
     ds.efficiencyIndicatorValue = htonll(record.efficiencyIndicatorValue);
     ds.packetDeltaCount = htonll(record.packetDeltaCount);
@@ -122,10 +128,10 @@ void copy_flow_records_to_payload(FlowRecordCache_t &records,
 // }
 
 uint8_t *get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader,
-                           DataSetHeader &dheader) {
+                           SetHeader &dheader) {
   uint8_t *payload = new uint8_t[mheader.length];
-  convertToNetworkByteOrder(mheader);
-  convertToNetworkByteOrder(dheader);
+  hton(mheader);
+  hton(dheader);
   std::memcpy(payload, &mheader, IPFIX_MESSAGE_HEADER_SIZE);
   std::memcpy(&payload[IPFIX_MESSAGE_HEADER_SIZE], &dheader,
               IPFIX_DATA_SET_HEADER_SIZE);

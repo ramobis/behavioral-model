@@ -5,7 +5,7 @@
 // Sizes are specified in bytes
 #define IPFIX_MESSAGE_HEADER_SIZE 16
 #define IPFIX_DATA_SET_HEADER_SIZE 4
-#define IPFIX_DATA_SET_FLOW_RECORD_SIZE 64
+#define IPFIX_DATA_SET_FLOW_RECORD_SIZE 68
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
 
@@ -19,7 +19,7 @@ struct MessageHeader {
 };
 
 // IPFIX Data Set Header
-struct DataSetHeader {
+struct SetHeader {
   uint16_t setID;
   uint16_t length;
 };
@@ -29,6 +29,8 @@ struct FlowRecordDataSet {
   uint32_t flowLabelIPv6;                   // IANA IEID = 31
   unsigned char sourceIPv6Address[16];      // IANA IEID = 27
   unsigned char destinationIPv6Address[16]; // IANA IEID = 28
+  uint16_t sourceTransportPort;             // IANA IEID = 7
+  uint16_t destinationTransportPort;        // IANA IEID = 11
   uint32_t efficiencyIndicatorID;           // IANA IEID = 5050
   uint64_t efficiencyIndicatorValue;        // IANA IEID = 5051
   uint64_t packetDeltaCount;                // IANA IEID = 2
@@ -41,6 +43,8 @@ struct FlowRecord {
   uint32_t flowLabelIPv6;
   unsigned char *sourceIPv6Address;
   unsigned char *destinationIPv6Address;
+  uint16_t sourceTransportPort;
+  uint16_t destinationTransportPort;
   uint32_t efficiencyIndicatorID;
   uint64_t efficiencyIndicatorValue;
   uint64_t packetDeltaCount;
@@ -65,7 +69,7 @@ uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records);
 // Returns the intialized raw payload which can be passed to libtins as raw
 // payload
 uint8_t *get_ipfix_payload(FlowRecordCache_t &records, MessageHeader &mheader,
-                           DataSetHeader &dheader);
+                           SetHeader &dheader);
 
 // Returns the node id of the exporting node
 uint32_t get_observation_domain_id();
@@ -75,6 +79,8 @@ uint32_t get_observation_domain_id();
 void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
                       const bm::Data &sourceIPv6Address,
                       const bm::Data &destinationIPv6Address,
+                      const bm::Data &sourceTransportPort,
+                      const bm::Data &destinationTransportPort,
                       const bm::Data &efficiencyIndicatorID,
                       const bm::Data &efficiencyIndicatorValue);
 
@@ -105,6 +111,8 @@ void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
                               const bm::Data &flowLabelIPv6,
                               const bm::Data &sourceIPv6Address,
                               const bm::Data &destinationIPv6Address,
+                              const bm::Data &sourceTransportPort,
+                              const bm::Data &destinationTransportPort,
                               const bm::Data &efficiencyIndicatorID,
                               const bm::Data &efficiencyIndicatorValue);
 

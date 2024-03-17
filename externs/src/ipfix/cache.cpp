@@ -41,11 +41,15 @@ uint32_t get_observation_domain_id() { return observationDomainID; }
 void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
                       const bm::Data &sourceIPv6Address,
                       const bm::Data &destinationIPv6Address,
+                      const bm::Data &sourceTransportPort,
+                      const bm::Data &destinationTransportPort,
                       const bm::Data &efficiencyIndicatorID,
                       const bm::Data &efficiencyIndicatorValue) {
   dstRecord.flowLabelIPv6 = flowLabelIPv6.get_uint();
   dstRecord.sourceIPv6Address = sourceIPv6Address.get_bytes(16);
   dstRecord.destinationIPv6Address = destinationIPv6Address.get_bytes(16);
+  dstRecord.sourceTransportPort = sourceTransportPort.get_uint16();
+  dstRecord.destinationTransportPort = destinationTransportPort.get_uint16();
   dstRecord.efficiencyIndicatorID = efficiencyIndicatorID.get_uint();
   dstRecord.efficiencyIndicatorValue = efficiencyIndicatorValue.get_uint64();
   dstRecord.packetDeltaCount = 1;
@@ -137,11 +141,14 @@ void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
                               const bm::Data &flowLabelIPv6,
                               const bm::Data &sourceIPv6Address,
                               const bm::Data &destinationIPv6Address,
+                              const bm::Data &sourceTransportPort,
+                              const bm::Data &destinationTransportPort,
                               const bm::Data &efficiencyIndicatorID,
                               const bm::Data &efficiencyIndicatorValue) {
   FlowRecord record;
   init_flow_record(record, flowLabelIPv6, sourceIPv6Address,
-                   destinationIPv6Address, efficiencyIndicatorID,
+                   destinationIPv6Address, sourceTransportPort,
+                   destinationTransportPort, efficiencyIndicatorID,
                    efficiencyIndicatorValue);
 
   update_flow_record(flowKey, record);
@@ -154,6 +161,7 @@ void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
   }
 }
 BM_REGISTER_EXTERN_FUNCTION(process_packet_flow_data, const bm::Data &,
+                            const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &);
