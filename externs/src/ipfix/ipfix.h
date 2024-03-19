@@ -1,8 +1,13 @@
+#include <bm/bm_sim/data.h>
 #include <cstdint>
 
-#include <bm/bm_sim/data.h>
-
 // Sizes are specified in bytes
+#define FLOW_MAX_IDLE_TIME 10000 // in milliseconds
+
+#define INDICATOR_ID_PEI 0xFF
+#define INDICATOR_ID_MIN_HEI 0xFE
+#define INDICATOR_ID_MAX_HEI 0xFD
+
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
 #define IPFIX_TEMPLATE_TRANSMISSION_INTERVAL 20
@@ -11,149 +16,142 @@
 
 // IPFIX Message Header
 struct MessageHeader {
-  uint16_t versionNumber;
+  uint16_t version_number;
   uint16_t length;
-  uint32_t exportTime;
-  uint32_t sequenceNumber;
-  uint32_t observationDomainID;
+  uint32_t export_time;
+  uint32_t sequence_number;
+  uint32_t observation_domain_id;
 } __attribute__((packed));
 
 // IPFIX Template Header
 struct TemplateRecordHeader {
-  uint16_t templateID;
-  uint16_t fieldCount;
+  uint16_t template_id;
+  uint16_t field_count;
 } __attribute__((packed));
 
 // IPFIX Data Set Header
 struct SetHeader {
-  uint16_t setID;
+  uint16_t set_id;
   uint16_t length;
 } __attribute__((packed));
 
 // IPFIX IANA assigned IEID template record
 struct TemplateRecord {
-  uint16_t informationElementID;
-  uint16_t fieldLength;
+  uint16_t information_element_id;
+  uint16_t field_length;
 } __attribute__((packed));
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecordDataSet {
-  uint32_t flowLabelIPv6;                   // IANA IEID = 31
-  unsigned char sourceIPv6Address[16];      // IANA IEID = 27
-  unsigned char destinationIPv6Address[16]; // IANA IEID = 28
-  uint16_t sourceTransportPort;             // IANA IEID = 7
-  uint16_t destinationTransportPort;        // IANA IEID = 11
-  uint32_t efficiencyIndicatorID;           // IANA IEID = 5050
-  uint64_t efficiencyIndicatorValue;        // IANA IEID = 5051
-  uint64_t packetDeltaCount;                // IANA IEID = 2
-  uint64_t flowStartMilliseconds;           // IANA IEID = 152
-  uint64_t flowEndMilliseconds;             // IANA IEID = 153
+  uint32_t flow_label_ipv6;                   // IANA IEID = 31
+  unsigned char source_ipv6_address[16];      // IANA IEID = 27
+  unsigned char destination_ipv6_address[16]; // IANA IEID = 28
+  uint16_t source_transport_port;             // IANA IEID = 7
+  uint16_t destination_transport_port;        // IANA IEID = 11
+  uint32_t efficiency_indicator_id;           // IANA IEID = 5050
+  uint64_t efficiency_indicator_value;        // IANA IEID = 5051
+  uint64_t packet_delta_count;                // IANA IEID = 2
+  uint64_t flow_start_milliseconds;           // IANA IEID = 152
+  uint64_t flow_end_milliseconds;             // IANA IEID = 153
 } __attribute__((packed));
 
 // IPFIX Data Set for flow based indicator data export
 struct FlowRecord {
-  uint32_t flowLabelIPv6;
-  unsigned char *sourceIPv6Address;
-  unsigned char *destinationIPv6Address;
-  uint16_t sourceTransportPort;
-  uint16_t destinationTransportPort;
-  uint32_t efficiencyIndicatorID;
-  uint64_t efficiencyIndicatorValue;
-  uint64_t packetDeltaCount;
-  uint64_t flowStartMilliseconds;
-  uint64_t flowEndMilliseconds;
+  uint32_t flow_label_ipv6;
+  unsigned char *source_ipv6_address;
+  unsigned char *destination_ipv6_address;
+  uint16_t source_transport_port;
+  uint16_t destination_transport_port;
+  uint32_t efficiency_indicator_id;
+  uint64_t efficiency_indicator_value;
+  uint64_t packet_delta_count;
+  uint64_t flow_start_milliseconds;
+  uint64_t flow_end_milliseconds;
 };
 
-typedef std::map<bm::Data, FlowRecord> FlowRecordCache_t;
-typedef std::map<uint16_t, std::list<TemplateRecord>> TemplateSets_t;
+typedef std::map<bm::Data, FlowRecord> FlowRecordCache;
+typedef std::map<uint16_t, std::list<TemplateRecord>> TemplateSets;
 
-// Overloaded operator<< for FlowRecord
-std::ostream &operator<<(std::ostream &os, const FlowRecord &record);
+/*
+ * Function Signatures in cache.cpp
+ */
 
-// Get unix timestamp in milliseconds
-uint64_t timeSinceEpochMillisec();
+uint32_t GetObservationDomainID();
 
-// Get unix timestamp in seconds
-uint32_t timeSinceEpochSec();
+void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
+                    const bm::Data &source_ipv6_address,
+                    const bm::Data &destination_ipv6_address,
+                    const bm::Data &source_transport_port,
+                    const bm::Data &destination_transport_port,
+                    const bm::Data &efficiency_indicator_id,
+                    const bm::Data &efficiency_indicator_value);
 
-// Print an IPv6 address stored in a bytes array
-void printIPv6Address(const unsigned char *ipv6Address);
+void UpdateFlowRecord(const bm::Data &flow_key, FlowRecord &record);
 
-// Returns the total size of the IPFIX flow record export message
-uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records);
-uint16_t get_ipfix_template_message_size(TemplateSets_t &sets);
-void send_ipfix_packet(uint8_t *payload, size_t size);
-// Returns the intialized raw payload which can be passed to libtins as raw
-// payload
-uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size);
+void SetExpiredFlowRecords(FlowRecordCache *records,
+                           FlowRecordCache &expired_records);
 
-uint8_t *get_ipfix_payload(TemplateSets_t &sets, size_t size);
+void DeleteFlowRecords(FlowRecordCache *cache, FlowRecordCache &records);
 
-// Returns the node id of the exporting node
-uint32_t get_observation_domain_id();
+void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys);
 
-// Initializes the FlowRecord datastructure with the values obtained from the
-// data plane.
-void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
-                      const bm::Data &sourceIPv6Address,
-                      const bm::Data &destinationIPv6Address,
-                      const bm::Data &sourceTransportPort,
-                      const bm::Data &destinationTransportPort,
-                      const bm::Data &efficiencyIndicatorID,
-                      const bm::Data &efficiencyIndicatorValue);
+void ManageFlowRecordCache();
 
-// Update the values of a given flow in the cache. In case of a new flow this
-// function adds a new record entry to the cache otherwise the existing entry is
-// updated accordingly.
-void update_flow_record(const bm::Data &flowKey, FlowRecord &record);
+void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
+                           const bm::Data &flow_label_ipv6,
+                           const bm::Data &source_ipv6_address,
+                           const bm::Data &destination_ipv6_address,
+                           const bm::Data &source_transport_port,
+                           const bm::Data &destination_transport_port,
+                           const bm::Data &efficiency_indicator_id,
+                           const bm::Data &efficiency_indicator_value);
 
-// Searches for expired records in records and writes expired to expireRecords.
-void set_expired_flow_records(FlowRecordCache_t *records,
-                              FlowRecordCache_t &expiredRecords);
+/*
+ * Function Signatures in export.cpp
+ */
 
-// Deletes the given records in the given cache
-void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records);
+void SendMessage(uint8_t *payload, size_t size);
 
-// Removes the empty caches from the index map given the keys of the empty
-// caches. The keys represent the indicator ID.
-void remove_empty_caches(std::set<uint32_t> emptyCacheKeys);
+void ExportFlows(FlowRecordCache &records);
 
-// Mangages the cache datastructure by iterating over it every five seconds and
-// calling the export and delete function for expired flow records.
-void manage_flow_record_cache();
+void ExportTemplates();
 
-// Extern function called by the data plane. Starts the detached cache
-// management process if not already started and updates the cache with the
-// packet data received from the data plane.
-void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
-                              const bm::Data &flowLabelIPv6,
-                              const bm::Data &sourceIPv6Address,
-                              const bm::Data &destinationIPv6Address,
-                              const bm::Data &sourceTransportPort,
-                              const bm::Data &destinationTransportPort,
-                              const bm::Data &efficiencyIndicatorID,
-                              const bm::Data &efficiencyIndicatorValue);
+void InitializeMessageHeader(uint8_t *payload, size_t size);
 
-// Exports expired flow records in the IPFIX format and sends a UDP packet to
-// the configured collector.
-void export_flow_records_data_set(FlowRecordCache_t &records);
-void export_template_sets();
+uint16_t GetFlowExportMessageSize(FlowRecordCache &records);
 
-// Initializes the first 2 Bytes of an ipfix message payload with the ipfix
-// message header
-void initialize_message_header_in_payload(uint8_t *payload, size_t size);
+uint16_t GetTemplateExportMessageSize(TemplateSets &sets);
 
-// Convert MessageHeader from host to network byte order
+uint8_t *GetPayload(FlowRecordCache &records, size_t size);
+
+uint8_t *GetPayload(TemplateSets &sets, size_t size);
+
+/*
+ * Function Signatures in hton.cpp
+ */
+
 void hton(MessageHeader &header);
 
-// Convert SetHeader from host to network byte order
 void hton(SetHeader &header);
 
-// Convert TemplateRecordHeader from host to network byte order
 void hton(TemplateRecordHeader &header);
 
-// Convert TemplateRecord from host to network byte order
 void hton(TemplateRecord &record);
 
-// Convert FlowRecordDataSet from host to network byte order
 void hton(FlowRecordDataSet &record);
+
+/*
+ * Function Signatures in utils.cpp
+ */
+
+std::ostream &operator<<(std::ostream &os, const FlowRecord &record);
+
+std::ostream &operator<<(std::ostream &os, const FlowRecordDataSet &frds);
+
+void HexDump(const void *data, size_t data_size);
+
+uint64_t TimeSinceEpochMillisec();
+
+uint32_t TimeSinceEpochSec();
+
+void PrintIPv6Address(const unsigned char *ipv6_address);

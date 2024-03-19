@@ -8,9 +8,9 @@
 using namespace Tins;
 
 // Declare mutex for ipfix sequence number
-uint32_t seqNum = 1;
+uint32_t seq_num = 1;
 
-void send_ipfix_packet(uint8_t *payload, size_t size) {
+void SendMessage(uint8_t *payload, size_t size) {
   NetworkInterface iface = NetworkInterface::default_interface();
   NetworkInterface::Info info = iface.addresses();
   IP packet = IP(IPFIX_COLLECTOR_IP, info.ip_addr) / UDP(4739, 43700) /
@@ -19,7 +19,7 @@ void send_ipfix_packet(uint8_t *payload, size_t size) {
   sender.send(packet, iface);
 }
 
-void export_flow_records_data_set(FlowRecordCache_t &records) {
+void ExportFlows(FlowRecordCache &records) {
   for (auto i = records.begin(); i != records.end(); ++i) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Exporting record:" << std::endl;
@@ -29,58 +29,58 @@ void export_flow_records_data_set(FlowRecordCache_t &records) {
   if (records.size() == 0) {
     return;
   }
-  size_t size = get_ipfix_flow_record_message_size(records);
-  uint8_t *payload = get_ipfix_payload(records, size);
-  initialize_message_header_in_payload(payload, size);
-  send_ipfix_packet(payload, size);
-  seqNum += records.size();
+  size_t size = GetFlowExportMessageSize(records);
+  uint8_t *payload = GetPayload(records, size);
+  InitializeMessageHeader(payload, size);
+  SendMessage(payload, size);
+  seq_num += records.size();
   delete payload;
 }
 
 // Send template records in a given intervall
 // Send multiple template sets in one message
-void export_template_sets() {
+void ExportTemplates() {
   // Initialize template records
-  std::list<TemplateRecord> flowExportTemplateRecords = {
-      TemplateRecord{.informationElementID = 31, .fieldLength = 4},
-      TemplateRecord{.informationElementID = 27, .fieldLength = 16},
-      TemplateRecord{.informationElementID = 28, .fieldLength = 16},
-      TemplateRecord{.informationElementID = 7, .fieldLength = 2},
-      TemplateRecord{.informationElementID = 11, .fieldLength = 2},
-      TemplateRecord{.informationElementID = 5050, .fieldLength = 4},
-      TemplateRecord{.informationElementID = 5051, .fieldLength = 8},
-      TemplateRecord{.informationElementID = 2, .fieldLength = 8},
-      TemplateRecord{.informationElementID = 152, .fieldLength = 8},
-      TemplateRecord{.informationElementID = 153, .fieldLength = 8},
+  std::list<TemplateRecord> flow_export_template_records = {
+      TemplateRecord{.information_element_id = 31, .field_length = 4},
+      TemplateRecord{.information_element_id = 27, .field_length = 16},
+      TemplateRecord{.information_element_id = 28, .field_length = 16},
+      TemplateRecord{.information_element_id = 7, .field_length = 2},
+      TemplateRecord{.information_element_id = 11, .field_length = 2},
+      TemplateRecord{.information_element_id = 5050, .field_length = 4},
+      TemplateRecord{.information_element_id = 5051, .field_length = 8},
+      TemplateRecord{.information_element_id = 2, .field_length = 8},
+      TemplateRecord{.information_element_id = 152, .field_length = 8},
+      TemplateRecord{.information_element_id = 153, .field_length = 8},
   };
   // Initialize template set map
-  TemplateSets_t ts{{IPFIX_FLOW_RECORD_SET_ID, flowExportTemplateRecords}};
-  size_t size = get_ipfix_template_message_size(ts);
-  uint8_t *payload = get_ipfix_payload(ts, size);
+  TemplateSets ts{{IPFIX_FLOW_RECORD_SET_ID, flow_export_template_records}};
+  size_t size = GetTemplateExportMessageSize(ts);
+  uint8_t *payload = GetPayload(ts, size);
   while (true) {
-    initialize_message_header_in_payload(payload, size);
-    send_ipfix_packet(payload, size);
+    InitializeMessageHeader(payload, size);
+    SendMessage(payload, size);
     sleep(IPFIX_TEMPLATE_TRANSMISSION_INTERVAL);
   }
 }
 
-void initialize_message_header_in_payload(uint8_t *payload, size_t size) {
+void InitializeMessageHeader(uint8_t *payload, size_t size) {
   MessageHeader mh;
-  mh.versionNumber = IPFIX_VERSION_NUMBER;
+  mh.version_number = IPFIX_VERSION_NUMBER;
   mh.length = size;
-  mh.exportTime = timeSinceEpochSec();
-  mh.sequenceNumber = seqNum;
-  mh.observationDomainID = get_observation_domain_id();
+  mh.export_time = TimeSinceEpochSec();
+  mh.sequence_number = seq_num;
+  mh.observation_domain_id = GetObservationDomainID();
   hton(mh);
   std::memcpy(payload, &mh, sizeof(MessageHeader));
 }
 
-uint16_t get_ipfix_flow_record_message_size(FlowRecordCache_t &records) {
+uint16_t GetFlowExportMessageSize(FlowRecordCache &records) {
   return sizeof(MessageHeader) + sizeof(SetHeader) +
          records.size() * sizeof(FlowRecordDataSet);
 }
 
-uint16_t get_ipfix_template_message_size(TemplateSets_t &sets) {
+uint16_t GetTemplateExportMessageSize(TemplateSets &sets) {
   uint16_t size = sizeof(MessageHeader) + sizeof(SetHeader);
   for (auto tmpl = sets.begin(); tmpl != sets.end(); ++tmpl) {
     size += sizeof(TemplateRecordHeader);
@@ -89,12 +89,12 @@ uint16_t get_ipfix_template_message_size(TemplateSets_t &sets) {
   return size;
 }
 
-uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size) {
+uint8_t *GetPayload(FlowRecordCache &records, size_t size) {
   uint8_t *payload = new uint8_t[size];
   uint offset = sizeof(MessageHeader);
 
   SetHeader sh;
-  sh.setID = IPFIX_FLOW_RECORD_SET_ID;
+  sh.set_id = IPFIX_FLOW_RECORD_SET_ID;
   sh.length = size - sizeof(MessageHeader);
 
   hton(sh);
@@ -103,16 +103,16 @@ uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size) {
 
   for (auto r = records.begin(); r != records.end(); ++r) {
     FlowRecordDataSet ds;
-    ds.flowLabelIPv6 = r->second.flowLabelIPv6;
-    ds.sourceTransportPort = r->second.sourceTransportPort;
-    ds.destinationTransportPort = r->second.destinationTransportPort;
-    ds.efficiencyIndicatorID = r->second.efficiencyIndicatorID;
-    ds.efficiencyIndicatorValue = r->second.efficiencyIndicatorValue;
-    ds.packetDeltaCount = r->second.packetDeltaCount;
-    ds.flowStartMilliseconds = r->second.flowStartMilliseconds;
-    ds.flowEndMilliseconds = r->second.flowEndMilliseconds;
-    std::memcpy(ds.sourceIPv6Address, r->second.sourceIPv6Address, 16);
-    std::memcpy(ds.destinationIPv6Address, r->second.destinationIPv6Address,
+    ds.flow_label_ipv6 = r->second.flow_label_ipv6;
+    ds.source_transport_port = r->second.source_transport_port;
+    ds.destination_transport_port = r->second.destination_transport_port;
+    ds.efficiency_indicator_id = r->second.efficiency_indicator_id;
+    ds.efficiency_indicator_value = r->second.efficiency_indicator_value;
+    ds.packet_delta_count = r->second.packet_delta_count;
+    ds.flow_start_milliseconds = r->second.flow_start_milliseconds;
+    ds.flow_end_milliseconds = r->second.flow_end_milliseconds;
+    std::memcpy(ds.source_ipv6_address, r->second.source_ipv6_address, 16);
+    std::memcpy(ds.destination_ipv6_address, r->second.destination_ipv6_address,
                 16);
 
     hton(ds);
@@ -122,12 +122,12 @@ uint8_t *get_ipfix_payload(FlowRecordCache_t &records, size_t size) {
   return payload;
 }
 
-uint8_t *get_ipfix_payload(TemplateSets_t &sets, size_t size) {
+uint8_t *GetPayload(TemplateSets &sets, size_t size) {
   uint8_t *payload = new uint8_t[size];
   uint offset = sizeof(MessageHeader);
 
   SetHeader sh;
-  sh.setID = IPFIX_TEMPLATE_SET_ID;
+  sh.set_id = IPFIX_TEMPLATE_SET_ID;
   sh.length = size - sizeof(MessageHeader);
 
   hton(sh);
@@ -137,8 +137,8 @@ uint8_t *get_ipfix_payload(TemplateSets_t &sets, size_t size) {
   for (auto tmpl = sets.begin(); tmpl != sets.end(); ++tmpl) {
     // Process template header
     TemplateRecordHeader th;
-    th.templateID = tmpl->first;
-    th.fieldCount = tmpl->second.size();
+    th.template_id = tmpl->first;
+    th.field_count = tmpl->second.size();
     hton(th);
     std::memcpy(&payload[offset], &th, sizeof(TemplateRecordHeader));
     offset += sizeof(TemplateRecordHeader);

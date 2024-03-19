@@ -26,144 +26,142 @@
 
 #include "ipfix.h"
 
-#define FLOW_MAX_IDLE_TIME 10 // in seconds
-#define INDICATOR_ID_PEI 0xFF
-#define INDICATOR_ID_MIN_HEI 0xFE
-#define INDICATOR_ID_MAX_HEI 0xFD
+bool bg_threads_started = false;
+std::map<uint32_t, FlowRecordCache *> id_cache_map;
+std::mutex id_cache_map_mutex;
+uint32_t observation_domain_id;
 
-bool bgThreadsStarted = false;
-std::map<uint32_t, FlowRecordCache_t *> idCacheMap;
-std::mutex idCacheMapMutex;
-uint32_t observationDomainID;
+uint32_t GetObservationDomainID() { return observation_domain_id; }
 
-uint32_t get_observation_domain_id() { return observationDomainID; }
-
-void init_flow_record(FlowRecord &dstRecord, const bm::Data &flowLabelIPv6,
-                      const bm::Data &sourceIPv6Address,
-                      const bm::Data &destinationIPv6Address,
-                      const bm::Data &sourceTransportPort,
-                      const bm::Data &destinationTransportPort,
-                      const bm::Data &efficiencyIndicatorID,
-                      const bm::Data &efficiencyIndicatorValue) {
-  dstRecord.flowLabelIPv6 = flowLabelIPv6.get_uint();
-  dstRecord.sourceIPv6Address = sourceIPv6Address.get_bytes(16);
-  dstRecord.destinationIPv6Address = destinationIPv6Address.get_bytes(16);
-  dstRecord.sourceTransportPort = sourceTransportPort.get_uint16();
-  dstRecord.destinationTransportPort = destinationTransportPort.get_uint16();
-  dstRecord.efficiencyIndicatorID = efficiencyIndicatorID.get_uint();
-  dstRecord.efficiencyIndicatorValue = efficiencyIndicatorValue.get_uint64();
-  dstRecord.packetDeltaCount = 1;
-  dstRecord.flowStartMilliseconds = timeSinceEpochMillisec();
-  dstRecord.flowEndMilliseconds = dstRecord.flowStartMilliseconds;
+void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
+                    const bm::Data &source_ipv6_address,
+                    const bm::Data &destination_ipv6_address,
+                    const bm::Data &source_transport_port,
+                    const bm::Data &destination_transport_port,
+                    const bm::Data &efficiency_indicator_id,
+                    const bm::Data &efficiency_indicator_value) {
+  dst_record.flow_label_ipv6 = flow_label_ipv6.get_uint();
+  dst_record.source_ipv6_address = source_ipv6_address.get_bytes(16);
+  dst_record.destination_ipv6_address = destination_ipv6_address.get_bytes(16);
+  dst_record.source_transport_port = source_transport_port.get_uint16();
+  dst_record.destination_transport_port =
+      destination_transport_port.get_uint16();
+  dst_record.efficiency_indicator_id = efficiency_indicator_id.get_uint();
+  dst_record.efficiency_indicator_value =
+      efficiency_indicator_value.get_uint64();
+  dst_record.packet_delta_count = 1;
+  dst_record.flow_start_milliseconds = TimeSinceEpochMillisec();
+  dst_record.flow_end_milliseconds = dst_record.flow_start_milliseconds;
 }
 
-void update_flow_record(const bm::Data &flowKey, FlowRecord &record) {
-  std::lock_guard<std::mutex> guard(idCacheMapMutex);
-  FlowRecordCache_t *cache;
-  auto i = idCacheMap.find((record.efficiencyIndicatorID));
+void UpdateFlowRecord(const bm::Data &flow_key, FlowRecord &record) {
+  std::lock_guard<std::mutex> guard(id_cache_map_mutex);
+  FlowRecordCache *cache;
+  auto i = id_cache_map.find((record.efficiency_indicator_id));
   // The cache for the specific indicator ID does not exist
-  if (i == idCacheMap.end()) {
-    cache = new FlowRecordCache_t; // allocate memory on the heap for new cache
-    idCacheMap[record.efficiencyIndicatorID] = cache;
+  if (i == id_cache_map.end()) {
+    cache = new FlowRecordCache; // allocate memory on the heap for new cache
+    id_cache_map[record.efficiency_indicator_id] = cache;
   } else {
-    cache = idCacheMap[record.efficiencyIndicatorID];
+    cache = id_cache_map[record.efficiency_indicator_id];
   }
-  auto j = cache->find(flowKey);
+  auto j = cache->find(flow_key);
   // There is no entry for the specific flow
   if (j == cache->end()) {
-    cache->insert(std::make_pair(flowKey, record));
+    cache->insert(std::make_pair(flow_key, record));
   } else {
-    cache->at(flowKey).efficiencyIndicatorValue +=
-        record.efficiencyIndicatorValue;
-    cache->at(flowKey).packetDeltaCount++;
-    cache->at(flowKey).flowEndMilliseconds = timeSinceEpochMillisec();
+    cache->at(flow_key).efficiency_indicator_value +=
+        record.efficiency_indicator_value;
+    cache->at(flow_key).packet_delta_count++;
+    cache->at(flow_key).flow_end_milliseconds = TimeSinceEpochMillisec();
   }
-  std::cout << cache->at(flowKey) << std::endl;
+  std::cout << cache->at(flow_key) << std::endl;
 }
 
-void set_expired_flow_records(FlowRecordCache_t *records,
-                              FlowRecordCache_t &expiredRecords) {
+void SetExpiredFlowRecords(FlowRecordCache *records,
+                           FlowRecordCache &expired_records) {
   for (auto i = records->begin(); i != records->end(); ++i) {
     auto record = i->second;
-    if (timeSinceEpochMillisec() - record.flowEndMilliseconds > FLOW_MAX_IDLE_TIME) {
+    if (TimeSinceEpochMillisec() - record.flow_end_milliseconds >
+        FLOW_MAX_IDLE_TIME) {
       std::cout
           << "IPFIX EXPORT: Found expired record - WRITING IN EXPIRED MAP:"
           << std::endl;
       std::cout << record << std::endl;
-      expiredRecords[i->first] = i->second;
+      expired_records[i->first] = i->second;
     }
   }
 }
 
-void delete_flow_records(FlowRecordCache_t *cache, FlowRecordCache_t &records) {
+void DeleteFlowRecords(FlowRecordCache *cache, FlowRecordCache &records) {
   for (auto i = records.begin(); i != records.end(); ++i) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Deleting record:" << std::endl;
     std::cout << record << std::endl;
-    delete i->second.sourceIPv6Address;
-    delete i->second.destinationIPv6Address;
+    delete i->second.source_ipv6_address;
+    delete i->second.destination_ipv6_address;
     cache->erase(i->first);
   }
 }
 
-void remove_empty_caches(std::set<uint32_t> emptyCacheKeys) {
-  for (auto key : emptyCacheKeys) {
+void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
+  for (auto key : empty_cache_keys) {
     std::cout << "IPFIX EXPORT: Cache with indicator ID 0x" << std::hex << key
               << " is empty - DELETING CACHE" << std::endl;
-    FlowRecordCache_t *cache = idCacheMap.at(key);
-    idCacheMap.erase(key);
+    FlowRecordCache *cache = id_cache_map.at(key);
+    id_cache_map.erase(key);
     delete cache;
   }
 }
 
-void manage_flow_record_cache() {
+void ManageFlowRecordCache() {
   std::cout << "IPFIX EXPORT: Flow record cache mangager started" << std::endl;
   while (true) {
-    FlowRecordCache_t expiredRecords;
-    std::set<uint32_t> emptyCacheKeys;
+    FlowRecordCache expired_records;
+    std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
-    for (auto i = idCacheMap.begin(); i != idCacheMap.end(); i++) {
-      std::lock_guard<std::mutex> guard(idCacheMapMutex);
-      set_expired_flow_records(i->second, expiredRecords);
-      export_flow_records_data_set(expiredRecords);
-      delete_flow_records(i->second, expiredRecords);
+    for (auto i = id_cache_map.begin(); i != id_cache_map.end(); i++) {
+      std::lock_guard<std::mutex> guard(id_cache_map_mutex);
+      SetExpiredFlowRecords(i->second, expired_records);
+      ExportFlows(expired_records);
+      DeleteFlowRecords(i->second, expired_records);
       if (i->second->empty()) {
-        emptyCacheKeys.insert(i->first);
+        empty_cache_keys.insert(i->first);
       }
     }
-    remove_empty_caches(emptyCacheKeys);
+    RemoveEmptyCaches(empty_cache_keys);
     sleep(5);
   }
 }
 
 //! Extern function called by the dataplane
-void process_packet_flow_data(const bm::Data &nodeID, const bm::Data &flowKey,
-                              const bm::Data &flowLabelIPv6,
-                              const bm::Data &sourceIPv6Address,
-                              const bm::Data &destinationIPv6Address,
-                              const bm::Data &sourceTransportPort,
-                              const bm::Data &destinationTransportPort,
-                              const bm::Data &efficiencyIndicatorID,
-                              const bm::Data &efficiencyIndicatorValue) {
+void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
+                           const bm::Data &flow_label_ipv6,
+                           const bm::Data &source_ipv6_address,
+                           const bm::Data &destination_ipv6_address,
+                           const bm::Data &source_transport_port,
+                           const bm::Data &destination_transport_port,
+                           const bm::Data &efficiency_indicator_id,
+                           const bm::Data &efficiency_indicator_value) {
   FlowRecord record;
-  init_flow_record(record, flowLabelIPv6, sourceIPv6Address,
-                   destinationIPv6Address, sourceTransportPort,
-                   destinationTransportPort, efficiencyIndicatorID,
-                   efficiencyIndicatorValue);
+  InitFlowRecord(record, flow_label_ipv6, source_ipv6_address,
+                 destination_ipv6_address, source_transport_port,
+                 destination_transport_port, efficiency_indicator_id,
+                 efficiency_indicator_value);
 
-  update_flow_record(flowKey, record);
+  UpdateFlowRecord(flow_key, record);
 
-  if (!bgThreadsStarted) {
-    observationDomainID = nodeID.get_int();
-    bgThreadsStarted = true;
-    std::thread cacheManager(manage_flow_record_cache);
-    std::thread templateExporter(export_template_sets);
-    cacheManager.detach();
-    templateExporter.detach();
+  if (!bg_threads_started) {
+    observation_domain_id = node_id.get_int();
+    bg_threads_started = true;
+    std::thread cache_manager(ManageFlowRecordCache);
+    std::thread template_exporter(ExportTemplates);
+    cache_manager.detach();
+    template_exporter.detach();
   }
 }
 
-BM_REGISTER_EXTERN_FUNCTION(process_packet_flow_data, const bm::Data &,
+BM_REGISTER_EXTERN_FUNCTION(ProcessPacketFlowData, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
