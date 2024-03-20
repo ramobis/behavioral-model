@@ -33,9 +33,9 @@ void hton(TemplateRecordHeader &header) {
 }
 
 // Function to convert fields of DataSetHeader to network byte order
-void hton(TemplateRecord &record) {
-  record.field_length = htons(record.field_length);
-  record.information_element_id = htons(record.information_element_id);
+void hton(FieldSpecifier &field) {
+  field.field_length = htons(field.field_length);
+  field.information_element_id = htons(field.information_element_id);
 }
 
 void hton(FlowRecordDataSet &record) {

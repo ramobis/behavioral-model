@@ -41,17 +41,17 @@ void ExportFlows(FlowRecordCache &records) {
 // Send multiple template sets in one message
 void ExportTemplates() {
   // Initialize template records
-  std::list<TemplateRecord> flow_export_template_records = {
-      TemplateRecord{.information_element_id = 31, .field_length = 4},
-      TemplateRecord{.information_element_id = 27, .field_length = 16},
-      TemplateRecord{.information_element_id = 28, .field_length = 16},
-      TemplateRecord{.information_element_id = 7, .field_length = 2},
-      TemplateRecord{.information_element_id = 11, .field_length = 2},
-      TemplateRecord{.information_element_id = 5050, .field_length = 4},
-      TemplateRecord{.information_element_id = 5051, .field_length = 8},
-      TemplateRecord{.information_element_id = 2, .field_length = 8},
-      TemplateRecord{.information_element_id = 152, .field_length = 8},
-      TemplateRecord{.information_element_id = 153, .field_length = 8},
+  std::list<FieldSpecifier> flow_export_template_records = {
+      FieldSpecifier{.information_element_id = 31, .field_length = 4},
+      FieldSpecifier{.information_element_id = 27, .field_length = 16},
+      FieldSpecifier{.information_element_id = 28, .field_length = 16},
+      FieldSpecifier{.information_element_id = 7, .field_length = 2},
+      FieldSpecifier{.information_element_id = 11, .field_length = 2},
+      FieldSpecifier{.information_element_id = 5050, .field_length = 4},
+      FieldSpecifier{.information_element_id = 5051, .field_length = 8},
+      FieldSpecifier{.information_element_id = 2, .field_length = 8},
+      FieldSpecifier{.information_element_id = 152, .field_length = 8},
+      FieldSpecifier{.information_element_id = 153, .field_length = 8},
   };
   // Initialize template set map
   TemplateSets ts{{IPFIX_FLOW_RECORD_SET_ID, flow_export_template_records}};
@@ -84,7 +84,7 @@ uint16_t GetTemplateExportMessageSize(TemplateSets &sets) {
   uint16_t size = sizeof(MessageHeader) + sizeof(SetHeader);
   for (auto tmpl = sets.begin(); tmpl != sets.end(); ++tmpl) {
     size += sizeof(TemplateRecordHeader);
-    size += sizeof(TemplateRecord) * tmpl->second.size();
+    size += sizeof(FieldSpecifier) * tmpl->second.size();
   }
   return size;
 }
@@ -144,10 +144,10 @@ uint8_t *GetPayload(TemplateSets &sets, size_t size) {
     offset += sizeof(TemplateRecordHeader);
 
     // Process template records
-    for (TemplateRecord r : tmpl->second) {
+    for (FieldSpecifier r : tmpl->second) {
       hton(r);
-      std::memcpy(&payload[offset], &r, sizeof(TemplateRecord));
-      offset += sizeof(TemplateRecord);
+      std::memcpy(&payload[offset], &r, sizeof(FieldSpecifier));
+      offset += sizeof(FieldSpecifier);
     }
   }
   return payload;

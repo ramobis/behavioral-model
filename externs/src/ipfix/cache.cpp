@@ -54,7 +54,7 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
   dst_record.flow_end_milliseconds = dst_record.flow_start_milliseconds;
 }
 
-void UpdateFlowRecord(const bm::Data &flow_key, FlowRecord &record) {
+void UpdateFlowRecordCache(const bm::Data &flow_key, FlowRecord &record) {
   std::lock_guard<std::mutex> guard(id_cache_map_mutex);
   FlowRecordCache *cache;
   auto i = id_cache_map.find((record.efficiency_indicator_id));
@@ -78,9 +78,9 @@ void UpdateFlowRecord(const bm::Data &flow_key, FlowRecord &record) {
   std::cout << cache->at(flow_key) << std::endl;
 }
 
-void SetExpiredFlowRecords(FlowRecordCache *records,
-                           FlowRecordCache &expired_records) {
-  for (auto i = records->begin(); i != records->end(); ++i) {
+void DiscoverExpiredFlowRecords(FlowRecordCache *cache,
+                                FlowRecordCache &expired_records) {
+  for (auto i = cache->begin(); i != cache->end(); ++i) {
     auto record = i->second;
     if (TimeSinceEpochMillisec() - record.flow_end_milliseconds >
         FLOW_MAX_IDLE_TIME) {
@@ -122,7 +122,7 @@ void ManageFlowRecordCache() {
     // Iterate over all keys and corresponding values
     for (auto i = id_cache_map.begin(); i != id_cache_map.end(); i++) {
       std::lock_guard<std::mutex> guard(id_cache_map_mutex);
-      SetExpiredFlowRecords(i->second, expired_records);
+      DiscoverExpiredFlowRecords(i->second, expired_records);
       ExportFlows(expired_records);
       DeleteFlowRecords(i->second, expired_records);
       if (i->second->empty()) {
@@ -149,7 +149,7 @@ void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
                  destination_transport_port, efficiency_indicator_id,
                  efficiency_indicator_value);
 
-  UpdateFlowRecord(flow_key, record);
+  UpdateFlowRecordCache(flow_key, record);
 
   if (!bg_threads_started) {
     observation_domain_id = node_id.get_int();
