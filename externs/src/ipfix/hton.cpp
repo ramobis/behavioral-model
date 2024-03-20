@@ -1,5 +1,7 @@
-#include "ipfix.h"
 #include <arpa/inet.h> // For htonl, htons
+
+#include "ipfix.h"
+
 
 uint64_t htonll(uint64_t x) {
 #if BYTE_ORDER == BIG_ENDIAN

@@ -1,9 +1,7 @@
-#include "ipfix.h"
-#include <cassert>
-#include <iostream>
-#include <string>
 #include <tins/ip.h>
 #include <tins/tins.h>
+
+#include "ipfix.h"
 
 using namespace Tins;
 
