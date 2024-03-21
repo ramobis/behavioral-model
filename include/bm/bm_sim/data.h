@@ -194,6 +194,12 @@ class Data {
     return value.convert_to<unsigned int>();
   }
 
+  //! Get the value of Data has a `uint16_t`
+  uint16_t get_uint16() const {
+    assert(arith);
+    return value.convert_to<uint16_t>();
+  }
+
   //! Get the value of Data has a `uint64_t`
   uint64_t get_uint64() const {
     assert(arith);
@@ -204,6 +210,19 @@ class Data {
   int get_int() const {
     assert(arith);
     return value.convert_to<int>();
+  }
+
+  // ! Get the value of Data as a bytes array. This function allocates memory on
+  // the heap. Make sure to call delete once the bytes array is not needed
+  // anymore.
+  unsigned char *get_bytes(size_t size) const {
+    char dst[size];
+    unsigned char *bytes = new unsigned char[size];
+    bm::bignum::export_bytes(dst, size, value);
+    for (unsigned int i = 0; i < size; i++) {
+      bytes[i] = static_cast<unsigned char>(dst[i]);
+    }
+    return bytes;
   }
 
   //! get the binary representation of Data has a string. There is no sign

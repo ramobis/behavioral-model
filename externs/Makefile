@@ -1,15 +1,19 @@
-LIBS = hello_world.so ipfix.so
-
+TARGET = ipfix
+SRCDIR = src/$(TARGET)
+SOURCES= $(wildcard */*/*.cpp)
+OBJDIR = obj
 CXX = g++
 CXXFLAGS = -Wall -Wextra -g -O2 -fPIC
 LDFLAGS = -shared
 
 .PHONY: all clean
 
-all: $(LIBS)
+all: $(OBJDIR)/$(TARGET).so
 
-%.so: %.cpp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+# Rule to compile each source file into an object file
+$(OBJDIR)/$(TARGET).so: $(SOURCES)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -ltins
 
+# Clean rule
 clean:
-	rm -f $(LIBS)
+	rm -f $(OBJDIR)/%.so
