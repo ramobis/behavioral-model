@@ -1,6 +1,6 @@
 TARGET = ipfix
 SRCDIR = src/$(TARGET)
-SOURCES= $(wildcard */*/*.cpp)
+SOURCES= $(wildcard */*/*.cpp) $(wildcard */*/*.h)
 OBJDIR = obj
 CXX = g++
 CXXFLAGS = -Wall -Wextra -g -O2 -fPIC
