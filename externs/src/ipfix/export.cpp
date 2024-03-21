@@ -6,6 +6,7 @@
 using namespace Tins;
 
 // Declare mutex for ipfix sequence number
+std::mutex seq_num_mutex;
 uint32_t seq_num = 1;
 
 void SendMessage(uint8_t *payload, size_t size) {
@@ -17,7 +18,8 @@ void SendMessage(uint8_t *payload, size_t size) {
   sender.send(packet, iface);
 }
 
-void ExportFlows(FlowRecordCache &records) {
+void ExportFlowRecords(FlowRecordCache &records) {
+  std::lock_guard<std::mutex> guard(seq_num_mutex);
   for (auto i = records.begin(); i != records.end(); ++i) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Exporting record:" << std::endl;
@@ -27,12 +29,31 @@ void ExportFlows(FlowRecordCache &records) {
   if (records.size() == 0) {
     return;
   }
-  size_t size = GetFlowExportMessageSize(records);
+  size_t size = GetMessageSize(records);
+  // TODO: Handle case size > MTU
   uint8_t *payload = GetPayload(records, size);
   InitializeMessageHeader(payload, size);
   SendMessage(payload, size);
   seq_num += records.size();
-  delete payload;
+  delete[] payload;
+}
+
+void ExportRawRecords(RawRecordCache &records) {
+  std::lock_guard<std::mutex> guard(seq_num_mutex);
+  if (records.size() == 0) {
+    return;
+  }
+
+  std::cout << "IPFIX EXPORT: Exporting " << records.size()
+            << " raw record(s):" << std::endl;
+
+  size_t size = GetMessageSize(records);
+  // TODO: Handle case size > MTU
+  uint8_t *payload = GetPayload(records, size);
+  InitializeMessageHeader(payload, size);
+  SendMessage(payload, size);
+  seq_num += records.size();
+  delete[] payload;
 }
 
 // Send template records in a given intervall
@@ -51,9 +72,18 @@ void ExportTemplates() {
       FieldSpecifier{.information_element_id = 152, .field_length = 8},
       FieldSpecifier{.information_element_id = 153, .field_length = 8},
   };
+  std::list<FieldSpecifier> raw_export_template_records = {
+      FieldSpecifier{.information_element_id = 5052, .field_length = 1},
+      FieldSpecifier{.information_element_id = 89, .field_length = 1},
+      FieldSpecifier{.information_element_id = 410, .field_length = 2},
+      FieldSpecifier{.information_element_id = 313,
+                     .field_length = RAW_EXPORT_IPV6_HEADER_SIZE},
+  };
   // Initialize template set map
-  TemplateSets ts{{IPFIX_FLOW_RECORD_SET_ID, flow_export_template_records}};
-  size_t size = GetTemplateExportMessageSize(ts);
+  TemplateSets ts{{IPFIX_FLOW_RECORD_SET_ID, flow_export_template_records},
+                  {IPFIX_RAW_IP_HEADER_SET_ID, raw_export_template_records}};
+  size_t size = GetMessageSize(ts);
+  // TODO: Handle case size > MTU
   uint8_t *payload = GetPayload(ts, size);
   while (true) {
     InitializeMessageHeader(payload, size);
@@ -73,12 +103,17 @@ void InitializeMessageHeader(uint8_t *payload, size_t size) {
   std::memcpy(payload, &mh, sizeof(MessageHeader));
 }
 
-uint16_t GetFlowExportMessageSize(FlowRecordCache &records) {
+uint16_t GetMessageSize(FlowRecordCache &records) {
   return sizeof(MessageHeader) + sizeof(SetHeader) +
          records.size() * sizeof(FlowRecordDataSet);
 }
 
-uint16_t GetTemplateExportMessageSize(TemplateSets &sets) {
+uint16_t GetMessageSize(RawRecordCache &records) {
+  return sizeof(MessageHeader) + sizeof(SetHeader) +
+         records.size() * sizeof(RawRecordDataSet);
+}
+
+uint16_t GetMessageSize(TemplateSets &sets) {
   uint16_t size = sizeof(MessageHeader) + sizeof(SetHeader);
   for (auto tmpl = sets.begin(); tmpl != sets.end(); ++tmpl) {
     size += sizeof(TemplateRecordHeader);
@@ -116,6 +151,35 @@ uint8_t *GetPayload(FlowRecordCache &records, size_t size) {
     hton(ds);
     std::memcpy(&payload[offset], &ds, sizeof(FlowRecordDataSet));
     offset += sizeof(FlowRecordDataSet);
+  }
+  return payload;
+}
+
+uint8_t *GetPayload(RawRecordCache &records, size_t size) {
+  uint8_t *payload = new uint8_t[size];
+  uint offset = sizeof(MessageHeader);
+
+  SetHeader sh;
+  sh.set_id = IPFIX_RAW_IP_HEADER_SET_ID;
+  sh.length = size - sizeof(MessageHeader);
+
+  hton(sh);
+  std::memcpy(&payload[offset], &sh, sizeof(SetHeader));
+  offset += sizeof(SetHeader);
+
+  for (auto r : records) {
+    RawRecordDataSet ds;
+    ds.ioam_report_flags = 0;
+    // 64 indicates that the packet was forwarded and no further information is
+    // provided. Refer to https://www.iana.org/assignments/ipfix/ipfix.xhtml
+    ds.forwarding_status = 64;
+    ds.section_exported_octets = 0;
+
+    std::memcpy(ds.ip_header_packet_section, r, sizeof(RawRecord));
+
+    hton(ds);
+    std::memcpy(&payload[offset], &ds, sizeof(RawRecordDataSet));
+    offset += sizeof(RawRecordDataSet);
   }
   return payload;
 }
