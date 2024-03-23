@@ -8,6 +8,8 @@
 #define FLOW_EXPORT_RECORD_MAX_IDLE_TIME 10000
 // Size specified in bytes
 #define RAW_EXPORT_IPV6_HEADER_SIZE 96
+
+// IPFIX
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
 // Duration specifed in seconds
@@ -15,6 +17,10 @@
 #define IPFIX_FLOW_RECORD_SET_ID 256
 #define IPFIX_RAW_IP_HEADER_SET_ID 257
 #define IPFIX_TEMPLATE_SET_ID 2
+
+// Errors
+#define ERR_OK 0
+#define ERR_MESSAGE_TOO_LONG 1
 
 // IPFIX message header as specified in section 3.1 in RFC7011.
 // The packed attribute is set because the memcpy operation is performed on
@@ -225,22 +231,24 @@ void ExportTemplates();
 // Function signatures in export_utils.cpp
 
 // Sends a given payload of a given size inside a UDP datagram as RawPDU out of
-// the default interface.
-void SendMessage(uint8_t *payload, size_t size);
+// the default interface. Returns ERR_MESSAGE_TOO_LONG in case of a "Message too
+// long" exception or ERR_OK in case the message was sent succesfully. Any other
+// exception which occured during the sending process is thrown.
+int SendMessage(uint8_t *payload, size_t size);
 
-// Tries to send the given flow records. The function catches the "Message too
-// long" exception and calls the specifc error handler to split up the records
-// in multiple messages.
+// Tries to send the given flow records. In case the "Message too long"
+// exception occurs in the SendMessage function the message is split up into
+// multiple messages until the messages are small enough to be transmitted.
 void TrySendRecords(FlowRecordCache &records);
 
-// Tries to send the given raw records. The function catches the "Message too
-// long" exception and calls the specifc error handler to split up the records
-// in multiple messages.
+// Tries to send the given raw records. In case the "Message too long"
+// exception occurs in the SendMessage function the message is split up into
+// multiple messages until the messages are small enough to be transmitted.
 void TrySendRecords(RawRecordCache &records);
 
 // Generates the static template message payloads given the sets and stores the
 // size and the corresponding payload in the provided list. The function
-// validated that the size of the generated payload is valid and splits up the
+// validates that the size of the generated payload is valid and splits up the
 // sets into multiple messages if required.
 void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst);
 

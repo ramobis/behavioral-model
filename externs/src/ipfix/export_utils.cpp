@@ -12,17 +12,12 @@ void TrySendRecords(FlowRecordCache &records) {
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
   InitializeMessageHeader(payload, size);
-  try {
-    SendMessage(payload, size);
+  int result = SendMessage(payload, size);
+  delete[] payload;
+  if (result == ERR_OK) {
     seq_num += records.size();
-    delete[] payload;
-  } catch (const Tins::socket_write_error &e) {
-    delete[] payload;
-    if (std::string(e.what()) == "Message too long") {
-      HandleMessageTooLong(records);
-    } else {
-      throw;
-    }
+  } else if (result == ERR_MESSAGE_TOO_LONG) {
+    HandleMessageTooLong(records);
   }
 }
 
@@ -31,28 +26,34 @@ void TrySendRecords(RawRecordCache &records) {
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
   InitializeMessageHeader(payload, size);
-  try {
-    SendMessage(payload, size);
+  int result = SendMessage(payload, size);
+  delete[] payload;
+  if (result == ERR_OK) {
     seq_num += records.size();
-    delete[] payload;
-  } catch (const Tins::socket_write_error &e) {
-    delete[] payload;
-    if (std::string(e.what()) == "Message too long") {
-      HandleMessageTooLong(records);
-    } else {
-      throw;
-    }
+  } else if (result == ERR_MESSAGE_TOO_LONG) {
+    HandleMessageTooLong(records);
   }
 }
 
-void SendMessage(uint8_t *payload, size_t size) {
+int SendMessage(uint8_t *payload, size_t size) {
+  int result = ERR_OK;
   std::cout << "IPFIX EXPORT: Sending IPFIX message" << std::endl;
   NetworkInterface iface = NetworkInterface::default_interface();
   NetworkInterface::Info info = iface.addresses();
   IP packet = IP(IPFIX_COLLECTOR_IP, info.ip_addr) / UDP(4739, 43700) /
               RawPDU(payload, size);
   PacketSender sender;
-  sender.send(packet, iface);
+  try {
+    sender.send(packet, iface);
+  } catch (const Tins::socket_write_error &e) {
+    if (std::string(e.what()) == "Message too long") {
+      result = ERR_MESSAGE_TOO_LONG;
+    } else {
+      delete[] payload;
+      throw;
+    }
+  }
+  return result;
 }
 
 void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst) {
@@ -60,16 +61,12 @@ void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst) {
   size_t size = GetMessageSize(sets);
   uint8_t *payload = GetPayload(sets, size);
   InitializeMessageHeader(payload, size);
-  try {
-    SendMessage(payload, size);
+  int err = SendMessage(payload, size);
+  if (err == ERR_OK) {
     dst.push_back(std::make_tuple(size, payload));
-  } catch (const Tins::socket_write_error &e) {
+  } else if (err == ERR_MESSAGE_TOO_LONG) {
     delete[] payload;
-    if (std::string(e.what()) == "Message too long") {
-      HandleMessageTooLong(sets, dst);
-    } else {
-      throw;
-    }
+    HandleMessageTooLong(sets, dst);
   }
 }
 
