@@ -1,3 +1,6 @@
+#ifndef _IPFIX_
+#define _IPFIX_
+
 #include <bm/bm_sim/data.h>
 #include <cstdint>
 
@@ -106,7 +109,11 @@ typedef std::list<RawRecord *> RawRecordCache;
 // specifiers.
 typedef std::map<uint16_t, std::list<FieldSpecifier>> TemplateSets;
 
-// Function Signatures in cache.cpp
+// PayloadList which contains tuples storing the size of the payload as first
+// element and a pointer to the payload as second element.
+typedef std::list<std::tuple<size_t, uint8_t *>> PayloadList;
+
+// Function signatures in cache.cpp
 
 // Returns the ID of the observation domain.
 // The returned value is initialized on the first execution of the function
@@ -201,11 +208,7 @@ void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
                            const bm::Data &efficiency_indicator_id,
                            const bm::Data &efficiency_indicator_value);
 
-// Function Signatures in export.cpp
-
-// Sends a given payload of a given size inside a UDP datagram as RawPDU out of
-// the default interface.
-void SendMessage(uint8_t *payload, size_t size);
+// Function signatures in export.cpp
 
 // Exports the given flow records. It initializes the payload and hands it over
 // to the SendMessage function for transmission.
@@ -219,6 +222,54 @@ void ExportRawRecords(RawRecordCache &records);
 // it over to the SendMessage function for transmission.
 void ExportTemplates();
 
+// Function signatures in export_utils.cpp
+
+// Sends a given payload of a given size inside a UDP datagram as RawPDU out of
+// the default interface.
+void SendMessage(uint8_t *payload, size_t size);
+
+// Tries to send the given flow records. The function catches the "Message too
+// long" exception and calls the specifc error handler to split up the records
+// in multiple messages.
+void TrySendRecords(FlowRecordCache &records);
+
+// Tries to send the given raw records. The function catches the "Message too
+// long" exception and calls the specifc error handler to split up the records
+// in multiple messages.
+void TrySendRecords(RawRecordCache &records);
+
+// Generates the static template message payloads given the sets and stores the
+// size and the corresponding payload in the provided list. The function
+// validated that the size of the generated payload is valid and splits up the
+// sets into multiple messages if required.
+void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst);
+
+// Handles the "Message too long" exception. The given flow records are split
+// into multiple messages.
+void HandleMessageTooLong(FlowRecordCache &records);
+
+// Handles the "Message too long" exception. The given raw records are split
+// into multiple messages.
+void HandleMessageTooLong(RawRecordCache &records);
+
+// Handles the "Message too long" exception. The given template sets are split
+// into multiple messages. This handler is called for template sets only.
+void HandleMessageTooLong(TemplateSets &sets, PayloadList &dst);
+
+// Splits the given flow record cache into the given first and second flow
+// record cache.
+void SplitRecords(FlowRecordCache &records, FlowRecordCache &first,
+                  FlowRecordCache &second);
+
+// Splits the given template set into the given first and second template set.
+void SplitRecords(TemplateSets &records, TemplateSets &first,
+                  TemplateSets &second);
+
+// Splits the given raw record cache into the given first and second raw record
+// cache.
+void SplitRecords(RawRecordCache &records, RawRecordCache &first,
+                  RawRecordCache &second);
+
 // Initializes the first 16 bytes of the payload as the IPFIX message header.
 void InitializeMessageHeader(uint8_t *payload, size_t size);
 
@@ -230,46 +281,46 @@ uint16_t GetMessageSize(FlowRecordCache &records);
 // export.
 uint16_t GetMessageSize(RawRecordCache &records);
 
-// Returns the size of the total template export message, given the templates to
-// export.
+// Returns the size of the total template export message, given the templates
+// to export.
 uint16_t GetMessageSize(TemplateSets &sets);
 
 // Returns the initialized flow record payload in network byte order (big
 // endian) given the records to export and the size of the payload.
 uint8_t *GetPayload(FlowRecordCache &records, size_t size);
 
-// Returns the initialized raw record payload in network byte order (big endian)
-// given the records to export and the size of the payload.
+// Returns the initialized raw record payload in network byte order (big
+// endian) given the records to export and the size of the payload.
 uint8_t *GetPayload(RawRecordCache &records, size_t size);
 
 // Returns the initialized template payload in network byte order (big endian)
 // given the templates to export and the size of the payload.
 uint8_t *GetPayload(TemplateSets &sets, size_t size);
 
-// Function Signatures in hton.cpp
+// Function signatures in hton.cpp
 
 // Converts a 64 bit integer from host byte order (little endian) to network
 // byte order (big endian).
 uint64_t htonll(uint64_t x);
 
 // Converts a struct variable from the type MessageHeader from host byte order
-// (little endian) to network byte order (big endian) given the reference of the
-// target datastructure.
+// (little endian) to network byte order (big endian) given the reference of
+// the target datastructure.
 void hton(MessageHeader &header);
 
 // Converts a struct variable from the type SetHeader from host byte order
-// (little endian) to network byte order (big endian) given the reference of the
-// target datastructure.
+// (little endian) to network byte order (big endian) given the reference of
+// the target datastructure.
 void hton(SetHeader &header);
 
-// Converts a struct variable from the type TemplateRecordHeader from host byte
-// order to network byte order (big endian) given the reference of the target
-// datastructure.
+// Converts a struct variable from the type TemplateRecordHeader from host
+// byte order to network byte order (big endian) given the reference of the
+// target datastructure.
 void hton(TemplateRecordHeader &header);
 
-// Converts a struct variable from the type TemplateRecord from host byte order
-// (little endian) to network byte order (big endian) given the reference of the
-// target datastructure.
+// Converts a struct variable from the type TemplateRecord from host byte
+// order (little endian) to network byte order (big endian) given the
+// reference of the target datastructure.
 void hton(FieldSpecifier &field);
 
 // Converts a struct variable from the type FlowRecordDataSet from host byte
@@ -282,7 +333,7 @@ void hton(FlowRecordDataSet &record);
 // datastructure.
 void hton(RawRecordDataSet &record);
 
-// Function Signatures in utils.cpp
+// Function signatures in utils.cpp
 
 // Overrides the operator << to print the struct type FlowRecord in a readable
 // format.
@@ -303,3 +354,4 @@ uint32_t TimeSinceEpochSec();
 
 // Prints an IPv6 address given a pointer to an unsigned char array.
 void PrintIPv6Address(const unsigned char *ipv6_address);
+#endif // _IPFIX_
