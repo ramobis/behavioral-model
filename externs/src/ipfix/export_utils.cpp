@@ -6,8 +6,10 @@
 using namespace Tins;
 
 uint32_t seq_num = 1;
+std::mutex seq_num_mutex;
 
 void TrySendRecords(FlowRecordCache &records) {
+  std::lock_guard<std::mutex> guard(seq_num_mutex);
   std::cout << "IPFIX EXPORT: Trying to send flow records" << std::endl;
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
@@ -22,6 +24,7 @@ void TrySendRecords(FlowRecordCache &records) {
 }
 
 void TrySendRecords(RawRecordCache &records) {
+  std::lock_guard<std::mutex> guard(seq_num_mutex);
   std::cout << "IPFIX EXPORT: Trying to send raw records" << std::endl;
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
@@ -57,6 +60,7 @@ int SendMessage(uint8_t *payload, size_t size) {
 }
 
 void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst) {
+  std::lock_guard<std::mutex> guard(seq_num_mutex);
   std::cout << "IPFIX EXPORT: Getting template messages" << std::endl;
   size_t size = GetMessageSize(sets);
   uint8_t *payload = GetPayload(sets, size);

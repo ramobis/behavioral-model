@@ -3,10 +3,8 @@
 #include <tins/tins.h>
 
 // Declare mutex for ipfix sequence number
-std::mutex seq_num_mutex;
 
 void ExportFlowRecords(FlowRecordCache &records) {
-  std::lock_guard<std::mutex> guard(seq_num_mutex);
   if (records.size() == 0) {
     return;
   }
@@ -19,7 +17,6 @@ void ExportFlowRecords(FlowRecordCache &records) {
 }
 
 void ExportRawRecords(RawRecordCache &records) {
-  std::lock_guard<std::mutex> guard(seq_num_mutex);
   if (records.size() == 0) {
     return;
   }
@@ -58,7 +55,6 @@ void ExportTemplates() {
   GenerateTemplateMessagePayloads(ts, template_messages);
   while (true) {
     sleep(IPFIX_TEMPLATE_TRANSMISSION_INTERVAL);
-    std::lock_guard<std::mutex> guard(seq_num_mutex);
     for (auto m : template_messages) {
       InitializeMessageHeader(std::get<uint8_t *>(m), std::get<size_t>(m));
       SendMessage(std::get<uint8_t *>(m), std::get<size_t>(m));
