@@ -12,6 +12,7 @@
 // IPFIX
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
+#define IPFIX_RAW_EXPORT_SAMPLE_RATE 10
 // Duration specifed in seconds
 #define IPFIX_TEMPLATE_TRANSMISSION_INTERVAL 20
 #define IPFIX_FLOW_RECORD_SET_ID 256
@@ -87,6 +88,7 @@ struct FlowRecord {
   uint64_t packet_delta_count;
   uint64_t flow_start_milliseconds;
   uint64_t flow_end_milliseconds;
+  uint64_t last_raw_export;
 };
 
 // Array data structure that holds IPv6 header raw data as so called raw
@@ -144,10 +146,11 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
 // into the cache_index.
 FlowRecordCache *GetFlowRecordCache(uint32_t indicator_id);
 
-// Returns a boolean to indicate if the flow with the given flow_key exists in
-// the given cache. In case the flow_key does not exist the flow is considered
-// new and the function returns true, otherwise false.
-bool IsNewFlow(FlowRecordCache *cache, const bm::Data &flow_key);
+// Returns a boolean to indicate if a raw export should be performed for the
+// packet with the given flow_key. The function returns true if there was no raw
+// export of the given flow before or if the last export was more than
+// IPFIX_RAW_EXPORT_SAMPLE_RATE packets ago. Else it returns false.
+bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key);
 
 // Processes a given record by updating the cache entry in the cache with the
 // corresponding efficiency indicator id and matching flow key.
@@ -193,12 +196,6 @@ void InsertRawRecord(RawRecord *record);
 // raw record cache. The function acquires a lock on the raw_record_cache as it
 // is used simultaneously.
 void DeleteRawRecords();
-
-// Manages the raw record cache. It is executed as a background task
-// running inside a detached thread. The function never terminates.
-// The function acquires a lock on the raw_record_cache as it is used
-// simultaneously.
-void ManageRawRecordCache();
 
 // Processes the packet flow and raw data. The function is called by the data
 // plane as P4 extern function. It obtains all values relevant for the caching
