@@ -50,3 +50,7 @@ void hton(FlowRecordDataSet &record) {
   record.flow_start_milliseconds = htonll(record.flow_start_milliseconds);
   record.flow_end_milliseconds = htonll(record.flow_end_milliseconds);
 }
+
+void hton(RawRecordDataSet &record) {
+  record.section_exported_octets = htons(record.section_exported_octets);
+}

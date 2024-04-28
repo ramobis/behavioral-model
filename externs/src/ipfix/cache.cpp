@@ -20,10 +20,12 @@
 
 #include "ipfix.h"
 
-bool bg_threads_started = false;
-std::map<uint32_t, FlowRecordCache *> id_cache_map;
-std::mutex id_cache_map_mutex;
+std::mutex cache_index_mutex;
+std::mutex raw_record_cache_mutex;
+FlowRecordCacheIndex cache_index;
+RawRecordCache raw_record_cache;
 uint32_t observation_domain_id;
+bool bg_threads_started = false;
 
 uint32_t GetObservationDomainID() { return observation_domain_id; }
 
@@ -46,22 +48,45 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
   dst_record.packet_delta_count = 1;
   dst_record.flow_start_milliseconds = TimeSinceEpochMillisec();
   dst_record.flow_end_milliseconds = dst_record.flow_start_milliseconds;
+  dst_record.last_raw_export = 0;
 }
 
-void UpdateFlowRecordCache(const bm::Data &flow_key, FlowRecord &record) {
-  std::lock_guard<std::mutex> guard(id_cache_map_mutex);
+FlowRecordCache *GetFlowRecordCache(uint32_t indicator_id) {
+  std::lock_guard<std::mutex> guard(cache_index_mutex);
   FlowRecordCache *cache;
-  auto i = id_cache_map.find((record.efficiency_indicator_id));
+  auto i = cache_index.find((indicator_id));
   // The cache for the specific indicator ID does not exist
-  if (i == id_cache_map.end()) {
+  if (i == cache_index.end()) {
     cache = new FlowRecordCache; // allocate memory on the heap for new cache
-    id_cache_map[record.efficiency_indicator_id] = cache;
+    cache_index[indicator_id] = cache;
   } else {
-    cache = id_cache_map[record.efficiency_indicator_id];
+    cache = cache_index[indicator_id];
   }
-  auto j = cache->find(flow_key);
-  // There is no entry for the specific flow
-  if (j == cache->end()) {
+  return cache;
+}
+
+bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key) {
+  std::lock_guard<std::mutex> guard(cache_index_mutex);
+  auto i = cache->find(flow_key);
+  if (i == cache->end()) {
+    return false;
+  }
+  uint64_t last_export_delta = cache->at(flow_key).packet_delta_count -
+                               cache->at(flow_key).last_raw_export;
+  if (last_export_delta >= IPFIX_RAW_EXPORT_SAMPLE_RATE ||
+      cache->at(flow_key).last_raw_export == 0) {
+    cache->at(flow_key).last_raw_export =
+        cache->at(flow_key).packet_delta_count;
+    return true;
+  }
+  return false;
+}
+
+void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
+                       FlowRecord &record) {
+  std::lock_guard<std::mutex> guard(cache_index_mutex);
+  auto i = cache->find(flow_key);
+  if (i == cache->end()) {
     cache->insert(std::make_pair(flow_key, record));
   } else {
     cache->at(flow_key).efficiency_indicator_value +=
@@ -77,7 +102,7 @@ void DiscoverExpiredFlowRecords(FlowRecordCache *cache,
   for (auto i = cache->begin(); i != cache->end(); ++i) {
     auto record = i->second;
     if (TimeSinceEpochMillisec() - record.flow_end_milliseconds >
-        FLOW_MAX_IDLE_TIME) {
+        FLOW_EXPORT_RECORD_MAX_IDLE_TIME) {
       std::cout
           << "IPFIX EXPORT: Found expired record - WRITING IN EXPIRED MAP:"
           << std::endl;
@@ -92,8 +117,8 @@ void DeleteFlowRecords(FlowRecordCache *cache, FlowRecordCache &records) {
     auto record = i->second;
     std::cout << "IPFIX EXPORT: Deleting record:" << std::endl;
     std::cout << record << std::endl;
-    delete i->second.source_ipv6_address;
-    delete i->second.destination_ipv6_address;
+    delete[] i->second.source_ipv6_address;
+    delete[] i->second.destination_ipv6_address;
     cache->erase(i->first);
   }
 }
@@ -102,8 +127,8 @@ void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
   for (auto key : empty_cache_keys) {
     std::cout << "IPFIX EXPORT: Cache with indicator ID 0x" << std::hex << key
               << " is empty - DELETING CACHE" << std::endl;
-    FlowRecordCache *cache = id_cache_map.at(key);
-    id_cache_map.erase(key);
+    FlowRecordCache *cache = cache_index.at(key);
+    cache_index.erase(key);
     delete cache;
   }
 }
@@ -111,51 +136,73 @@ void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
 void ManageFlowRecordCache() {
   std::cout << "IPFIX EXPORT: Flow record cache mangager started" << std::endl;
   while (true) {
+    sleep(5);
+    std::lock_guard<std::mutex> guard(cache_index_mutex);
     FlowRecordCache expired_records;
     std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
-    for (auto i = id_cache_map.begin(); i != id_cache_map.end(); i++) {
-      std::lock_guard<std::mutex> guard(id_cache_map_mutex);
+    for (auto i = cache_index.begin(); i != cache_index.end(); i++) {
       DiscoverExpiredFlowRecords(i->second, expired_records);
-      ExportFlows(expired_records);
+      ExportFlowRecords(expired_records);
       DeleteFlowRecords(i->second, expired_records);
       if (i->second->empty()) {
         empty_cache_keys.insert(i->first);
       }
     }
     RemoveEmptyCaches(empty_cache_keys);
-    sleep(5);
   }
 }
 
+RawRecord *GetRawRecord(const bm::Data raw_ipv6_header) {
+  return reinterpret_cast<RawRecord *>(
+      raw_ipv6_header.get_bytes(RAW_EXPORT_IPV6_HEADER_SIZE));
+}
+
+void InsertRawRecord(RawRecord *record) { raw_record_cache.push_back(record); }
+
+void DeleteRawRecords() {
+  for (RawRecord *r : raw_record_cache) {
+    delete[] r;
+  }
+  raw_record_cache.clear();
+}
+
 //! Extern function called by the dataplane
-void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
-                           const bm::Data &flow_label_ipv6,
-                           const bm::Data &source_ipv6_address,
-                           const bm::Data &destination_ipv6_address,
-                           const bm::Data &source_transport_port,
-                           const bm::Data &destination_transport_port,
-                           const bm::Data &efficiency_indicator_id,
-                           const bm::Data &efficiency_indicator_value) {
+void ProcessEfficiencyIndicatorMetadata(
+    const bm::Data &node_id, const bm::Data &flow_key,
+    const bm::Data &flow_label_ipv6, const bm::Data &source_ipv6_address,
+    const bm::Data &destination_ipv6_address,
+    const bm::Data &source_transport_port,
+    const bm::Data &destination_transport_port,
+    const bm::Data &efficiency_indicator_id,
+    const bm::Data &efficiency_indicator_value,
+    const bm::Data &raw_ipv6_header) {
+  if (!bg_threads_started) {
+    observation_domain_id = node_id.get_int();
+    bg_threads_started = true;
+    std::thread flow_export_cache_manager(ManageFlowRecordCache);
+    std::thread template_exporter(ExportTemplates);
+    flow_export_cache_manager.detach();
+    template_exporter.detach();
+  }
   FlowRecord record;
   InitFlowRecord(record, flow_label_ipv6, source_ipv6_address,
                  destination_ipv6_address, source_transport_port,
                  destination_transport_port, efficiency_indicator_id,
                  efficiency_indicator_value);
-
-  UpdateFlowRecordCache(flow_key, record);
-
-  if (!bg_threads_started) {
-    observation_domain_id = node_id.get_int();
-    bg_threads_started = true;
-    std::thread cache_manager(ManageFlowRecordCache);
-    std::thread template_exporter(ExportTemplates);
-    cache_manager.detach();
-    template_exporter.detach();
+  FlowRecordCache *cache = GetFlowRecordCache(record.efficiency_indicator_id);
+  ProcessFlowRecord(cache, flow_key, record);
+  if (IsRawExportRequired(cache, flow_key)) {
+    std::lock_guard<std::mutex> guard(raw_record_cache_mutex);
+    RawRecord *record = GetRawRecord(raw_ipv6_header);
+    InsertRawRecord(record);
+    ExportRawRecords(raw_record_cache);
+    DeleteRawRecords();
   }
 }
 
-BM_REGISTER_EXTERN_FUNCTION(ProcessPacketFlowData, const bm::Data &,
+BM_REGISTER_EXTERN_FUNCTION(ProcessEfficiencyIndicatorMetadata,
+                            const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
