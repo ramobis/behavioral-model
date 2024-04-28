@@ -85,6 +85,7 @@ struct FlowRecord {
   uint16_t destination_transport_port;
   uint32_t efficiency_indicator_id;
   uint64_t efficiency_indicator_value;
+  uint8_t efficiency_indicator_aggregator;
   uint64_t packet_delta_count;
   uint64_t flow_start_milliseconds;
   uint64_t flow_end_milliseconds;
