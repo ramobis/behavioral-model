@@ -152,10 +152,10 @@ void ManageFlowRecordCache() {
   while (true) {
     sleep(5);
     std::lock_guard<std::mutex> guard(cache_index_mutex);
-    FlowRecordCache expired_records;
     std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
     for (auto i = cache_index.begin(); i != cache_index.end(); i++) {
+      FlowRecordCache expired_records;
       DiscoverExpiredFlowRecords(i->second, expired_records);
       ExportFlowRecords(expired_records);
       DeleteFlowRecords(i->second, expired_records);
