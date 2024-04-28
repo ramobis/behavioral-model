@@ -96,6 +96,27 @@ bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key) {
   return false;
 }
 
+uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
+                                           uint8_t aggregator) {
+  switch (aggregator) {
+  case 1: // SUM
+    return current + aggregate;
+  case 2: // MIN
+    if (aggregate < current) {
+      return aggregate;
+    }
+    return current;
+  case 4: // MAX
+    if (aggregate > current) {
+      return aggregate;
+    }
+    return current;
+  default:
+    std::cout << "IPFIX EXPORT: Unsupported aggregator, proceeding without aggregation...";
+    return current;
+  }
+}
+
 void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
                        FlowRecord &record) {
   std::lock_guard<std::mutex> guard(cache_index_mutex);
@@ -103,8 +124,11 @@ void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
   if (i == cache->end()) {
     cache->insert(std::make_pair(flow_key, record));
   } else {
-    cache->at(flow_key).efficiency_indicator_value +=
-        record.efficiency_indicator_value;
+    cache->at(flow_key).efficiency_indicator_value =
+        AggregateEfficiencyIndicatorValue(
+            cache->at(flow_key).efficiency_indicator_value,
+            record.efficiency_indicator_value,
+            record.efficiency_indicator_aggregator);
     cache->at(flow_key).packet_delta_count++;
     cache->at(flow_key).flow_end_milliseconds = TimeSinceEpochMillisec();
   }
@@ -200,6 +224,7 @@ void ProcessEfficiencyIndicatorMetadata(
     flow_export_cache_manager.detach();
     template_exporter.detach();
   }
+
   FlowRecord record;
   InitFlowRecord(record, flow_label_ipv6, source_ipv6_address,
                  destination_ipv6_address, source_transport_port,
@@ -209,6 +234,7 @@ void ProcessEfficiencyIndicatorMetadata(
       record.efficiency_indicator_id, record.efficiency_indicator_aggregator);
   FlowRecordCache *cache = GetFlowRecordCache(flow_record_cache_key);
   ProcessFlowRecord(cache, flow_key, record);
+
   if (IsRawExportRequired(cache, flow_key)) {
     std::lock_guard<std::mutex> guard(raw_record_cache_mutex);
     RawRecord *record = GetRawRecord(raw_ipv6_header);

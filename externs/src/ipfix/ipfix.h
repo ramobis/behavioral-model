@@ -154,6 +154,12 @@ FlowRecordCache *GetFlowRecordCache(uint32_t indicator_id);
 // IPFIX_RAW_EXPORT_SAMPLE_RATE packets ago. Else it returns false.
 bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key);
 
+// Returns the aggregated efficiency indicator value.
+// In case an unsupported aggregator is given the current value is returned,
+// otherwise the current value is aggregated with the aggregate.
+uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
+                                           uint8_t aggregator);
+
 // Processes a given record by updating the cache entry in the cache with the
 // corresponding efficiency indicator id and matching flow key.
 // In case the cache does not contain an entry with the given flow key,
