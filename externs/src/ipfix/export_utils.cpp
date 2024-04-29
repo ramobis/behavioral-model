@@ -195,6 +195,8 @@ uint8_t *GetPayload(FlowRecordCache &records, size_t size) {
     ds.destination_transport_port = r->second.destination_transport_port;
     ds.efficiency_indicator_id = r->second.efficiency_indicator_id;
     ds.efficiency_indicator_value = r->second.efficiency_indicator_value;
+    ds.efficiency_indicator_aggregator =
+        r->second.efficiency_indicator_aggregator;
     ds.packet_delta_count = r->second.packet_delta_count;
     ds.flow_start_milliseconds = r->second.flow_start_milliseconds;
     ds.flow_end_milliseconds = r->second.flow_end_milliseconds;

@@ -35,7 +35,8 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
                     const bm::Data &source_transport_port,
                     const bm::Data &destination_transport_port,
                     const bm::Data &efficiency_indicator_id,
-                    const bm::Data &efficiency_indicator_value) {
+                    const bm::Data &efficiency_indicator_value,
+                    const bm::Data &efficiency_indicator_aggregator) {
   dst_record.flow_label_ipv6 = flow_label_ipv6.get_uint();
   dst_record.source_ipv6_address = source_ipv6_address.get_bytes(16);
   dst_record.destination_ipv6_address = destination_ipv6_address.get_bytes(16);
@@ -45,22 +46,35 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
   dst_record.efficiency_indicator_id = efficiency_indicator_id.get_uint();
   dst_record.efficiency_indicator_value =
       efficiency_indicator_value.get_uint64();
+  dst_record.efficiency_indicator_aggregator =
+      static_cast<uint8_t>(efficiency_indicator_aggregator.get_uint());
   dst_record.packet_delta_count = 1;
   dst_record.flow_start_milliseconds = TimeSinceEpochMillisec();
   dst_record.flow_end_milliseconds = dst_record.flow_start_milliseconds;
   dst_record.last_raw_export = 0;
 }
 
-FlowRecordCache *GetFlowRecordCache(uint32_t indicator_id) {
+uint32_t GetFlowRecordCacheKey(uint32_t indicator_id,
+                               uint8_t indicator_aggregator) {
+  // indicator_id is a 24 bit number which is equal to the IOAM data param
+  // left shift by 8 bits won't result in an overflow
+  return (indicator_id << 8) + indicator_aggregator;
+}
+
+FlowRecordCache *GetFlowRecordCache(uint32_t key) {
   std::lock_guard<std::mutex> guard(cache_index_mutex);
   FlowRecordCache *cache;
-  auto i = cache_index.find((indicator_id));
+  auto i = cache_index.find((key));
   // The cache for the specific indicator ID does not exist
   if (i == cache_index.end()) {
+    std::cout << "IPFIX EXPORT: Allocating new FlowRecordCache with key: 0x"
+              << std::hex << key << std::endl;
     cache = new FlowRecordCache; // allocate memory on the heap for new cache
-    cache_index[indicator_id] = cache;
+    cache_index[key] = cache;
   } else {
-    cache = cache_index[indicator_id];
+    std::cout << "IPFIX EXPORT: Found existing FlowRecordCache with key: 0x"
+              << std::hex << key << std::endl;
+    cache = cache_index[key];
   }
   return cache;
 }
@@ -82,6 +96,27 @@ bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key) {
   return false;
 }
 
+uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
+                                           uint8_t aggregator) {
+  switch (aggregator) {
+  case 1: // SUM
+    return current + aggregate;
+  case 2: // MIN
+    if (aggregate < current) {
+      return aggregate;
+    }
+    return current;
+  case 4: // MAX
+    if (aggregate > current) {
+      return aggregate;
+    }
+    return current;
+  default:
+    std::cout << "IPFIX EXPORT: Unsupported aggregator, proceeding without aggregation...";
+    return current;
+  }
+}
+
 void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
                        FlowRecord &record) {
   std::lock_guard<std::mutex> guard(cache_index_mutex);
@@ -89,8 +124,11 @@ void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
   if (i == cache->end()) {
     cache->insert(std::make_pair(flow_key, record));
   } else {
-    cache->at(flow_key).efficiency_indicator_value +=
-        record.efficiency_indicator_value;
+    cache->at(flow_key).efficiency_indicator_value =
+        AggregateEfficiencyIndicatorValue(
+            cache->at(flow_key).efficiency_indicator_value,
+            record.efficiency_indicator_value,
+            record.efficiency_indicator_aggregator);
     cache->at(flow_key).packet_delta_count++;
     cache->at(flow_key).flow_end_milliseconds = TimeSinceEpochMillisec();
   }
@@ -138,10 +176,10 @@ void ManageFlowRecordCache() {
   while (true) {
     sleep(5);
     std::lock_guard<std::mutex> guard(cache_index_mutex);
-    FlowRecordCache expired_records;
     std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
     for (auto i = cache_index.begin(); i != cache_index.end(); i++) {
+      FlowRecordCache expired_records;
       DiscoverExpiredFlowRecords(i->second, expired_records);
       ExportFlowRecords(expired_records);
       DeleteFlowRecords(i->second, expired_records);
@@ -176,6 +214,7 @@ void ProcessEfficiencyIndicatorMetadata(
     const bm::Data &destination_transport_port,
     const bm::Data &efficiency_indicator_id,
     const bm::Data &efficiency_indicator_value,
+    const bm::Data &efficiency_indicator_aggregator,
     const bm::Data &raw_ipv6_header) {
   if (!bg_threads_started) {
     observation_domain_id = node_id.get_int();
@@ -185,13 +224,17 @@ void ProcessEfficiencyIndicatorMetadata(
     flow_export_cache_manager.detach();
     template_exporter.detach();
   }
+
   FlowRecord record;
   InitFlowRecord(record, flow_label_ipv6, source_ipv6_address,
                  destination_ipv6_address, source_transport_port,
                  destination_transport_port, efficiency_indicator_id,
-                 efficiency_indicator_value);
-  FlowRecordCache *cache = GetFlowRecordCache(record.efficiency_indicator_id);
+                 efficiency_indicator_value, efficiency_indicator_aggregator);
+  uint32_t flow_record_cache_key = GetFlowRecordCacheKey(
+      record.efficiency_indicator_id, record.efficiency_indicator_aggregator);
+  FlowRecordCache *cache = GetFlowRecordCache(flow_record_cache_key);
   ProcessFlowRecord(cache, flow_key, record);
+
   if (IsRawExportRequired(cache, flow_key)) {
     std::lock_guard<std::mutex> guard(raw_record_cache_mutex);
     RawRecord *record = GetRawRecord(raw_ipv6_header);
@@ -206,4 +249,5 @@ BM_REGISTER_EXTERN_FUNCTION(ProcessEfficiencyIndicatorMetadata,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
-                            const bm::Data &, const bm::Data &);
+                            const bm::Data &, const bm::Data &,
+                            const bm::Data &);

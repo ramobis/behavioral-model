@@ -69,6 +69,7 @@ struct FlowRecordDataSet {
   uint16_t destination_transport_port;        // IANA IEID = 11
   uint32_t efficiency_indicator_id;           // IANA IEID = 5050
   uint64_t efficiency_indicator_value;        // IANA IEID = 5051
+  uint8_t efficiency_indicator_aggregator;    // IANA IEID = 5052
   uint64_t packet_delta_count;                // IANA IEID = 2
   uint64_t flow_start_milliseconds;           // IANA IEID = 152
   uint64_t flow_end_milliseconds;             // IANA IEID = 153
@@ -85,6 +86,7 @@ struct FlowRecord {
   uint16_t destination_transport_port;
   uint32_t efficiency_indicator_id;
   uint64_t efficiency_indicator_value;
+  uint8_t efficiency_indicator_aggregator;
   uint64_t packet_delta_count;
   uint64_t flow_start_milliseconds;
   uint64_t flow_end_milliseconds;
@@ -99,10 +101,10 @@ typedef unsigned char RawRecord[RAW_EXPORT_IPV6_HEADER_SIZE];
 // The packed attribute is set because the memcpy operation is performed on
 // instances of this type.
 struct RawRecordDataSet {
-  uint8_t ioam_report_flags;
-  uint8_t forwarding_status;
-  uint16_t section_exported_octets;
-  RawRecord ip_header_packet_section;
+  uint8_t ioam_report_flags;          // IANA IEID = 5053
+  uint8_t forwarding_status;          // IANA IEID = 89
+  uint16_t section_exported_octets;   // IANA IEID = 410
+  RawRecord ip_header_packet_section; // IANA IEID = 313
 } __attribute__((packed));
 
 // FlowRecordCache maps a flow key on the corresponding FlowRecord.
@@ -151,6 +153,12 @@ FlowRecordCache *GetFlowRecordCache(uint32_t indicator_id);
 // export of the given flow before or if the last export was more than
 // IPFIX_RAW_EXPORT_SAMPLE_RATE packets ago. Else it returns false.
 bool IsRawExportRequired(FlowRecordCache *cache, const bm::Data &flow_key);
+
+// Returns the aggregated efficiency indicator value.
+// In case an unsupported aggregator is given the current value is returned,
+// otherwise the current value is aggregated with the aggregate.
+uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
+                                           uint8_t aggregator);
 
 // Processes a given record by updating the cache entry in the cache with the
 // corresponding efficiency indicator id and matching flow key.
