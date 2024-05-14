@@ -46,6 +46,10 @@ void hton(FlowRecordDataSet &record) {
   record.destination_transport_port = htons(record.destination_transport_port);
   record.efficiency_indicator_id = htonl(record.efficiency_indicator_id);
   record.efficiency_indicator_value = htonll(record.efficiency_indicator_value);
+  record.packet_delta_count_flag_1 = htonll(record.packet_delta_count_flag_1);
+  record.packet_delta_count_flag_2 = htonll(record.packet_delta_count_flag_2);
+  record.packet_delta_count_flag_3 = htonll(record.packet_delta_count_flag_3);
+  record.packet_delta_count_flag_4 = htonll(record.packet_delta_count_flag_4);
   record.packet_delta_count = htonll(record.packet_delta_count);
   record.flow_start_milliseconds = htonll(record.flow_start_milliseconds);
   record.flow_end_milliseconds = htonll(record.flow_end_milliseconds);

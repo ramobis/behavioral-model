@@ -70,6 +70,10 @@ struct FlowRecordDataSet {
   uint32_t efficiency_indicator_id;           // IANA IEID = 5050
   uint64_t efficiency_indicator_value;        // IANA IEID = 5051
   uint8_t efficiency_indicator_aggregator;    // IANA IEID = 5052
+  uint64_t packet_delta_count_flag_1;         // IANA IEID = 5053
+  uint64_t packet_delta_count_flag_2;         // IANA IEID = 5054
+  uint64_t packet_delta_count_flag_3;         // IANA IEID = 5055
+  uint64_t packet_delta_count_flag_4;         // IANA IEID = 5056
   uint64_t packet_delta_count;                // IANA IEID = 2
   uint64_t flow_start_milliseconds;           // IANA IEID = 152
   uint64_t flow_end_milliseconds;             // IANA IEID = 153
@@ -87,10 +91,15 @@ struct FlowRecord {
   uint32_t efficiency_indicator_id;
   uint64_t efficiency_indicator_value;
   uint8_t efficiency_indicator_aggregator;
+  uint64_t packet_delta_count_flag_1;
+  uint64_t packet_delta_count_flag_2;
+  uint64_t packet_delta_count_flag_3;
+  uint64_t packet_delta_count_flag_4;
   uint64_t packet_delta_count;
   uint64_t flow_start_milliseconds;
   uint64_t flow_end_milliseconds;
   uint64_t last_raw_export;
+  bool ignore_efficiency_data;
 };
 
 // Array data structure that holds IPv6 header raw data as so called raw
@@ -101,7 +110,7 @@ typedef unsigned char RawRecord[RAW_EXPORT_IPV6_HEADER_SIZE];
 // The packed attribute is set because the memcpy operation is performed on
 // instances of this type.
 struct RawRecordDataSet {
-  uint8_t ioam_report_flags;          // IANA IEID = 5053
+  uint8_t ioam_report_flags;          // IANA IEID = 5060
   uint8_t forwarding_status;          // IANA IEID = 89
   uint16_t section_exported_octets;   // IANA IEID = 410
   RawRecord ip_header_packet_section; // IANA IEID = 313
@@ -140,7 +149,9 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
                     const bm::Data &source_transport_port,
                     const bm::Data &destination_transport_port,
                     const bm::Data &efficiency_indicator_id,
-                    const bm::Data &efficiency_indicator_value);
+                    const bm::Data &efficiency_indicator_value,
+                    const bm::Data &efficiency_indicator_aggregator,
+                    const bm::Data &efficiency_indicator_flags);
 
 // Returns a pointer to the FlowRecordCache holding entries for the given
 // indicator_id. In case there is no active cache for the given indicator_id in
@@ -210,14 +221,17 @@ void DeleteRawRecords();
 // and export process. This function is the entry point in the ipfix
 // implementation and starts all related background threads if not already
 // started.
-void ProcessPacketFlowData(const bm::Data &node_id, const bm::Data &flow_key,
-                           const bm::Data &flow_label_ipv6,
-                           const bm::Data &source_ipv6_address,
-                           const bm::Data &destination_ipv6_address,
-                           const bm::Data &source_transport_port,
-                           const bm::Data &destination_transport_port,
-                           const bm::Data &efficiency_indicator_id,
-                           const bm::Data &efficiency_indicator_value);
+void ProcessEfficiencyIndicatorMetadata(
+    const bm::Data &node_id, const bm::Data &flow_key,
+    const bm::Data &flow_label_ipv6, const bm::Data &source_ipv6_address,
+    const bm::Data &destination_ipv6_address,
+    const bm::Data &source_transport_port,
+    const bm::Data &destination_transport_port,
+    const bm::Data &efficiency_indicator_id,
+    const bm::Data &efficiency_indicator_value,
+    const bm::Data &efficiency_indicator_aggregator,
+    const bm::Data &efficiency_indicator_flags,
+    const bm::Data &raw_ipv6_header);
 
 // Function signatures in export.cpp
 

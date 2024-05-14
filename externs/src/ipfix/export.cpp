@@ -38,12 +38,16 @@ void ExportTemplates() {
       FieldSpecifier{.information_element_id = 5050, .field_length = 4},
       FieldSpecifier{.information_element_id = 5051, .field_length = 8},
       FieldSpecifier{.information_element_id = 5052, .field_length = 1},
+      FieldSpecifier{.information_element_id = 5053, .field_length = 8},
+      FieldSpecifier{.information_element_id = 5054, .field_length = 8},
+      FieldSpecifier{.information_element_id = 5055, .field_length = 8},
+      FieldSpecifier{.information_element_id = 5056, .field_length = 8},
       FieldSpecifier{.information_element_id = 2, .field_length = 8},
       FieldSpecifier{.information_element_id = 152, .field_length = 8},
       FieldSpecifier{.information_element_id = 153, .field_length = 8},
   };
   std::list<FieldSpecifier> raw_export_template_records = {
-      FieldSpecifier{.information_element_id = 5053, .field_length = 1},
+      FieldSpecifier{.information_element_id = 5060, .field_length = 1},
       FieldSpecifier{.information_element_id = 89, .field_length = 1},
       FieldSpecifier{.information_element_id = 410, .field_length = 2},
       FieldSpecifier{.information_element_id = 313,

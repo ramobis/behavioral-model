@@ -36,7 +36,8 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
                     const bm::Data &destination_transport_port,
                     const bm::Data &efficiency_indicator_id,
                     const bm::Data &efficiency_indicator_value,
-                    const bm::Data &efficiency_indicator_aggregator) {
+                    const bm::Data &efficiency_indicator_aggregator,
+                    const bm::Data &efficiency_indicator_flags) {
   dst_record.flow_label_ipv6 = flow_label_ipv6.get_uint();
   dst_record.source_ipv6_address = source_ipv6_address.get_bytes(16);
   dst_record.destination_ipv6_address = destination_ipv6_address.get_bytes(16);
@@ -48,6 +49,36 @@ void InitFlowRecord(FlowRecord &dst_record, const bm::Data &flow_label_ipv6,
       efficiency_indicator_value.get_uint64();
   dst_record.efficiency_indicator_aggregator =
       static_cast<uint8_t>(efficiency_indicator_aggregator.get_uint());
+
+  // flags
+  uint flags = efficiency_indicator_flags.get_uint();
+  if (flags == 0) {
+    dst_record.ignore_efficiency_data = false;
+  } else {
+    dst_record.ignore_efficiency_data = true;
+  }
+
+  dst_record.packet_delta_count_flag_1 = 0;
+  dst_record.packet_delta_count_flag_2 = 0;
+  dst_record.packet_delta_count_flag_3 = 0;
+  dst_record.packet_delta_count_flag_4 = 0;
+
+  if (flags & 0b0001) {
+    dst_record.packet_delta_count_flag_1 = 1;
+  }
+
+  if (flags & 0b0010) {
+    dst_record.packet_delta_count_flag_2 = 1;
+  }
+
+  if (flags & 0b0100) {
+    dst_record.packet_delta_count_flag_3 = 1;
+  }
+
+  if (flags & 0b1000) {
+    dst_record.packet_delta_count_flag_4 = 1;
+  }
+
   dst_record.packet_delta_count = 1;
   dst_record.flow_start_milliseconds = TimeSinceEpochMillisec();
   dst_record.flow_end_milliseconds = dst_record.flow_start_milliseconds;
@@ -112,7 +143,8 @@ uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
     }
     return current;
   default:
-    std::cout << "IPFIX EXPORT: Unsupported aggregator, proceeding without aggregation...";
+    std::cout << "IPFIX EXPORT: Unsupported aggregator, proceeding without "
+                 "aggregation...";
     return current;
   }
 }
@@ -122,17 +154,38 @@ void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
   std::lock_guard<std::mutex> guard(cache_index_mutex);
   auto i = cache->find(flow_key);
   if (i == cache->end()) {
+    if (record.ignore_efficiency_data) {
+      record.efficiency_indicator_value = 0;
+    }
     cache->insert(std::make_pair(flow_key, record));
+    return;
+  }
+
+  if (record.ignore_efficiency_data) {
+    // Update error flag counters
+    if (record.packet_delta_count_flag_1) {
+      cache->at(flow_key).packet_delta_count_flag_1++;
+    }
+    if (record.packet_delta_count_flag_2) {
+      cache->at(flow_key).packet_delta_count_flag_2++;
+    }
+    if (record.packet_delta_count_flag_3) {
+      cache->at(flow_key).packet_delta_count_flag_3++;
+    }
+    if (record.packet_delta_count_flag_4) {
+      cache->at(flow_key).packet_delta_count_flag_4++;
+    }
   } else {
+    // Update aggregate
     cache->at(flow_key).efficiency_indicator_value =
         AggregateEfficiencyIndicatorValue(
             cache->at(flow_key).efficiency_indicator_value,
             record.efficiency_indicator_value,
             record.efficiency_indicator_aggregator);
-    cache->at(flow_key).packet_delta_count++;
-    cache->at(flow_key).flow_end_milliseconds = TimeSinceEpochMillisec();
   }
-  std::cout << cache->at(flow_key) << std::endl;
+
+  cache->at(flow_key).packet_delta_count++;
+  cache->at(flow_key).flow_end_milliseconds = TimeSinceEpochMillisec();
 }
 
 void DiscoverExpiredFlowRecords(FlowRecordCache *cache,
@@ -215,6 +268,7 @@ void ProcessEfficiencyIndicatorMetadata(
     const bm::Data &efficiency_indicator_id,
     const bm::Data &efficiency_indicator_value,
     const bm::Data &efficiency_indicator_aggregator,
+    const bm::Data &efficiency_indicator_flags,
     const bm::Data &raw_ipv6_header) {
   if (!bg_threads_started) {
     observation_domain_id = node_id.get_int();
@@ -229,7 +283,8 @@ void ProcessEfficiencyIndicatorMetadata(
   InitFlowRecord(record, flow_label_ipv6, source_ipv6_address,
                  destination_ipv6_address, source_transport_port,
                  destination_transport_port, efficiency_indicator_id,
-                 efficiency_indicator_value, efficiency_indicator_aggregator);
+                 efficiency_indicator_value, efficiency_indicator_aggregator,
+                 efficiency_indicator_flags);
   uint32_t flow_record_cache_key = GetFlowRecordCacheKey(
       record.efficiency_indicator_id, record.efficiency_indicator_aggregator);
   FlowRecordCache *cache = GetFlowRecordCache(flow_record_cache_key);
@@ -250,4 +305,4 @@ BM_REGISTER_EXTERN_FUNCTION(ProcessEfficiencyIndicatorMetadata,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
                             const bm::Data &, const bm::Data &,
-                            const bm::Data &);
+                            const bm::Data &, const bm::Data &);
