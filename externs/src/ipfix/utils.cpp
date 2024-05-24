@@ -1,4 +1,5 @@
 #include "ipfix.h"
+#include <bm/bm_sim/logger.h>
 
 // Overloaded operator<< for FlowRecord
 std::ostream &operator<<(std::ostream &os, const FlowRecord &record) {
@@ -80,7 +81,7 @@ uint32_t TimeSinceEpochSec() {
 
 void PrintIPv6Address(const unsigned char *ipv6_address) {
   if (ipv6_address == nullptr) {
-    std::cerr << "Error: Invalid pointer to IPv6 address" << std::endl;
+    BMLOG_ERROR("Invalid pointer to IPv6 address");
     return;
   }
   // // Iterate through the 16 fields of the IPv6 address

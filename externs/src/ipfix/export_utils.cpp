@@ -1,5 +1,6 @@
 #include <tins/ip.h>
 #include <tins/tins.h>
+#include <bm/bm_sim/logger.h>
 
 #include "ipfix.h"
 
@@ -10,7 +11,7 @@ std::mutex seq_num_mutex;
 
 void TrySendRecords(FlowRecordCache &records) {
   std::lock_guard<std::mutex> guard(seq_num_mutex);
-  std::cout << "IPFIX EXPORT: Trying to send flow records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Trying to send {} flow record(s)", records.size());
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
   InitializeMessageHeader(payload, size);
@@ -24,8 +25,7 @@ void TrySendRecords(FlowRecordCache &records) {
 }
 
 void TrySendRecords(RawRecordCache &records) {
-  std::lock_guard<std::mutex> guard(seq_num_mutex);
-  std::cout << "IPFIX EXPORT: Trying to send raw records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Trying to send {} raw record(s)", records.size());
   size_t size = GetMessageSize(records);
   uint8_t *payload = GetPayload(records, size);
   InitializeMessageHeader(payload, size);
@@ -40,7 +40,7 @@ void TrySendRecords(RawRecordCache &records) {
 
 int SendMessage(uint8_t *payload, size_t size) {
   int result = ERR_OK;
-  std::cout << "IPFIX EXPORT: Sending IPFIX message" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Sending IPFIX message");
   NetworkInterface iface = NetworkInterface::default_interface();
   NetworkInterface::Info info = iface.addresses();
   IP packet = IP(IPFIX_COLLECTOR_IP, info.ip_addr) / UDP(4739, 43700) /
@@ -61,7 +61,7 @@ int SendMessage(uint8_t *payload, size_t size) {
 
 void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst) {
   std::lock_guard<std::mutex> guard(seq_num_mutex);
-  std::cout << "IPFIX EXPORT: Getting template messages" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Generating template set message payload including {} template set(s)", sets.size());
   size_t size = GetMessageSize(sets);
   uint8_t *payload = GetPayload(sets, size);
   InitializeMessageHeader(payload, size);
@@ -75,7 +75,7 @@ void GenerateTemplateMessagePayloads(TemplateSets sets, PayloadList &dst) {
 }
 
 void HandleMessageTooLong(FlowRecordCache &records) {
-  std::cout << "Handling message too long error for flow records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Handling message too long error for flow records");
   FlowRecordCache first_split;
   FlowRecordCache second_split;
   SplitRecords(records, first_split, second_split);
@@ -84,7 +84,7 @@ void HandleMessageTooLong(FlowRecordCache &records) {
 }
 
 void HandleMessageTooLong(RawRecordCache &records) {
-  std::cout << "Handling message too long error for raw records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Handling message too long error for raw records");
   RawRecordCache first_split;
   RawRecordCache second_split;
   SplitRecords(records, first_split, second_split);
@@ -93,7 +93,7 @@ void HandleMessageTooLong(RawRecordCache &records) {
 }
 
 void HandleMessageTooLong(TemplateSets &sets, PayloadList &dst) {
-  std::cout << "Handling message too long error for template sets" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Handling message too long error for template sets");
   TemplateSets first_split;
   TemplateSets second_split;
   SplitRecords(sets, first_split, second_split);
@@ -103,7 +103,7 @@ void HandleMessageTooLong(TemplateSets &sets, PayloadList &dst) {
 
 void SplitRecords(FlowRecordCache &records, FlowRecordCache &first,
                   FlowRecordCache &second) {
-  std::cout << "IPFIX EXPORT: Splitting flow records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Splitting flow records");
   int counter = 0;
   int half_size = records.size() / 2;
   for (auto i = records.begin(); i != records.end(); ++i) {
@@ -118,7 +118,7 @@ void SplitRecords(FlowRecordCache &records, FlowRecordCache &first,
 
 void SplitRecords(TemplateSets &records, TemplateSets &first,
                   TemplateSets &second) {
-  std::cout << "IPFIX EXPORT: Splitting template sets" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Splitting template sets");
   int counter = 0;
   int half_size = records.size() / 2;
   for (auto i = records.begin(); i != records.end(); ++i) {
@@ -133,7 +133,7 @@ void SplitRecords(TemplateSets &records, TemplateSets &first,
 
 void SplitRecords(RawRecordCache &records, RawRecordCache &first,
                   RawRecordCache &second) {
-  std::cout << "IPFIX EXPORT: Splitting raw records" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Splitting raw records");
   int counter = 0;
   int half_size = records.size() / 2;
   for (auto record : records) {
