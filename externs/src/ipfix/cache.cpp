@@ -223,7 +223,7 @@ void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
 void ManageFlowRecordCache() {
   BMLOG_DEBUG("IPFIX EXPORT: Starting flow record cache mangager");
   while (true) {
-    sleep(5);
+    sleep(IPFIX_CACHE_MANAGER_DISCOVERY_INTERVAL);
     std::lock_guard<std::mutex> guard(cache_index_mutex);
     std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
