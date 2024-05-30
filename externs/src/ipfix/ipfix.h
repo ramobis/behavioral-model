@@ -12,7 +12,7 @@
 // IPFIX
 #define IPFIX_VERSION_NUMBER 0x000a
 #define IPFIX_COLLECTOR_IP "10.0.2.2"
-#define IPFIX_RAW_EXPORT_SAMPLE_RATE 10
+#define IPFIX_RAW_EXPORT_SAMPLE_RATE 50
 // Duration specifed in seconds
 #define IPFIX_TEMPLATE_TRANSMISSION_INTERVAL 20
 // Duration specifed in seconds
