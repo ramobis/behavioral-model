@@ -1,6 +1,7 @@
 #include "ipfix.h"
 #include <tins/ip.h>
 #include <tins/tins.h>
+#include <bm/bm_sim/logger.h>
 
 // Declare mutex for ipfix sequence number
 
@@ -10,8 +11,7 @@ void ExportFlowRecords(FlowRecordCache &records) {
   }
   for (auto i = records.begin(); i != records.end(); ++i) {
     auto record = i->second;
-    std::cout << "IPFIX EXPORT: Exporting record:" << std::endl;
-    std::cout << record << std::endl;
+    BMLOG_DEBUG("IPFIX EXPORT: Exporting record with flow label {}", record.flow_label_ipv6);
   }
   TrySendRecords(records);
 }
@@ -20,8 +20,7 @@ void ExportRawRecords(RawRecordCache &records) {
   if (records.size() == 0) {
     return;
   }
-  std::cout << "IPFIX EXPORT: Exporting " << records.size()
-            << " raw record(s):" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Exporting {} raw record(s)", records.size());
   TrySendRecords(records);
 }
 
@@ -60,6 +59,7 @@ void ExportTemplates() {
   GenerateTemplateMessagePayloads(ts, template_messages);
   while (true) {
     sleep(IPFIX_TEMPLATE_TRANSMISSION_INTERVAL);
+    BMLOG_DEBUG("IPFIX EXPORT: Exporting {} IPFIX template set(s)", ts.size());
     for (auto m : template_messages) {
       InitializeMessageHeader(std::get<uint8_t *>(m), std::get<size_t>(m));
       SendMessage(std::get<uint8_t *>(m), std::get<size_t>(m));

@@ -17,6 +17,7 @@
 
 #include <bm/bm_sim/data.h>
 #include <bm/bm_sim/extern.h>
+#include <bm/bm_sim/logger.h>
 
 #include "ipfix.h"
 
@@ -98,13 +99,11 @@ FlowRecordCache *GetFlowRecordCache(uint32_t key) {
   auto i = cache_index.find((key));
   // The cache for the specific indicator ID does not exist
   if (i == cache_index.end()) {
-    std::cout << "IPFIX EXPORT: Allocating new FlowRecordCache with key: 0x"
-              << std::hex << key << std::endl;
+    BMLOG_DEBUG("IPFIX EXPORT: Allocating new FlowRecordCache with key {}", key);
     cache = new FlowRecordCache; // allocate memory on the heap for new cache
     cache_index[key] = cache;
   } else {
-    std::cout << "IPFIX EXPORT: Found existing FlowRecordCache with key: 0x"
-              << std::hex << key << std::endl;
+    BMLOG_DEBUG("IPFIX EXPORT: Found existing FlowRecordCache with key {}", key);
     cache = cache_index[key];
   }
   return cache;
@@ -143,8 +142,7 @@ uint64_t AggregateEfficiencyIndicatorValue(uint64_t current, uint32_t aggregate,
     }
     return current;
   default:
-    std::cout << "IPFIX EXPORT: Unsupported aggregator, proceeding without "
-                 "aggregation...";
+    BMLOG_DEBUG("IPFIX EXPORT: Unsupported aggregator, proceeding without aggregation");
     return current;
   }
 }
@@ -158,11 +156,13 @@ void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
       record.efficiency_indicator_value = 0;
     }
     cache->insert(std::make_pair(flow_key, record));
+    BMLOG_DEBUG("IPFIX EXPORT: Inserting new record with flow label {} into cache", record.flow_label_ipv6);
     return;
   }
 
   if (record.ignore_efficiency_data) {
     // Update error flag counters
+    BMLOG_DEBUG("IPFIX EXPORT: Updating error flag counters of record with flow label {}", record.flow_label_ipv6);
     if (record.packet_delta_count_flag_1) {
       cache->at(flow_key).packet_delta_count_flag_1++;
     }
@@ -177,6 +177,7 @@ void ProcessFlowRecord(FlowRecordCache *cache, const bm::Data &flow_key,
     }
   } else {
     // Update aggregate
+    BMLOG_DEBUG("IPFIX EXPORT: Found existing record with flow label {} in cache, aggregating efficiency indicator values", record.flow_label_ipv6);
     cache->at(flow_key).efficiency_indicator_value =
         AggregateEfficiencyIndicatorValue(
             cache->at(flow_key).efficiency_indicator_value,
@@ -194,10 +195,7 @@ void DiscoverExpiredFlowRecords(FlowRecordCache *cache,
     auto record = i->second;
     if (TimeSinceEpochMillisec() - record.flow_end_milliseconds >
         FLOW_EXPORT_RECORD_MAX_IDLE_TIME) {
-      std::cout
-          << "IPFIX EXPORT: Found expired record - WRITING IN EXPIRED MAP:"
-          << std::endl;
-      std::cout << record << std::endl;
+        BMLOG_DEBUG("IPFIX EXPORT: Found expired record with flow label {}, adding record to expired list", record.flow_label_ipv6);
       expired_records[i->first] = i->second;
     }
   }
@@ -206,8 +204,7 @@ void DiscoverExpiredFlowRecords(FlowRecordCache *cache,
 void DeleteFlowRecords(FlowRecordCache *cache, FlowRecordCache &records) {
   for (auto i = records.begin(); i != records.end(); ++i) {
     auto record = i->second;
-    std::cout << "IPFIX EXPORT: Deleting record:" << std::endl;
-    std::cout << record << std::endl;
+    BMLOG_DEBUG("IPFIX EXPORT: Deleting expired record with flow label {} from cache", record.flow_label_ipv6);
     delete[] i->second.source_ipv6_address;
     delete[] i->second.destination_ipv6_address;
     cache->erase(i->first);
@@ -216,8 +213,7 @@ void DeleteFlowRecords(FlowRecordCache *cache, FlowRecordCache &records) {
 
 void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
   for (auto key : empty_cache_keys) {
-    std::cout << "IPFIX EXPORT: Cache with indicator ID 0x" << std::hex << key
-              << " is empty - DELETING CACHE" << std::endl;
+    BMLOG_DEBUG("IPFIX EXPORT: Deleting empty cache with key {}", key);
     FlowRecordCache *cache = cache_index.at(key);
     cache_index.erase(key);
     delete cache;
@@ -225,9 +221,9 @@ void RemoveEmptyCaches(std::set<uint32_t> empty_cache_keys) {
 }
 
 void ManageFlowRecordCache() {
-  std::cout << "IPFIX EXPORT: Flow record cache mangager started" << std::endl;
+  BMLOG_DEBUG("IPFIX EXPORT: Starting flow record cache mangager");
   while (true) {
-    sleep(5);
+    sleep(IPFIX_CACHE_MANAGER_DISCOVERY_INTERVAL);
     std::lock_guard<std::mutex> guard(cache_index_mutex);
     std::set<uint32_t> empty_cache_keys;
     // Iterate over all keys and corresponding values
