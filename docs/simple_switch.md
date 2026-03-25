@@ -3,7 +3,7 @@
 The bmv2 framework lets developers implement their own P4-programmable
 architecture as a software switch. The simple_switch architecture is the
 de-facto architecture for most users, as it is roughly equivalent to the
-"abstract switch model" described in the [P4_14 spec](https://p4.org/specs).
+"abstract switch model" described in the [P4_14 spec](https://p4.org/specifications).
 
 The P4_16 language has been designed such that there can be multiple
 architectures, e.g. one or more architectures for a switch device, one
@@ -16,7 +16,7 @@ and v1model called out below, primarily in the names of a few metadata
 fields.
 
 The P4_16 language also now has a Portable Switch Architecture (PSA)
-defined in [its own specification](https://p4.org/specs).  As of
+defined in [its own specification](https://p4.org/specifications).  As of
 January 2022, a partial implementation of the PSA architecture has
 been done, but it is not yet complete.  It will be implemented in a
 separate executable program named `psa_switch`, separate from the
@@ -44,6 +44,13 @@ some configuration changes that the P4Runtime API does not, e.g. the
 
 Thus if you wish to use the P4Runtime API to control the configuration
 of the switch, you must use simple_switch_grpc.
+
+See the following presentation for more details on how the P4Runtime
+API is implemented in simple_switch_grpc:
+
++ ["P4 Runtime Implementation in P4.org
+  projects"](https://www.youtube.com/watch?v=YGdcZ6PYiUo) by Antonin
+  Bas on April 7, 2021
 
 
 ## Standard metadata
@@ -83,9 +90,22 @@ Here are the fields:
   ingress.  If your P4 program assigns a value of DROP_PORT to `egress_spec`, it
   will still behave according to the "after-ingress pseudocode", even if you
   never call `mark_to_drop` (P4_16) or `drop` (P4_14).
+  Note that if you never assign a value to this field, nor drop the
+  packet, during ingress processing, its default initial value is 0,
+  and the packet will be unicast to output port 0.
 - `egress_port` (sm14, v1m) - Only intended to be accessed during
-  egress processing, read only.  The output port this packet is
-  destined to.
+  egress processing, read only.  While you can read its value during
+  ingress processing, you should think of its value as uninitialized
+  garbage during ingress.  This field is assigned a predictable value
+  just before the packet begins egress processing, equal to the output
+  port that this packet is destined to (if it is not dropped during
+  egress processing).  There is no compile-time error or warning if
+  you do assign to this field, but if you wish your P4 code to be
+  easier to port to other programmable switches, do not ever assign it
+  a value.  See [Appendix D.2 "No output port change during egress" of
+  the PSA
+  specification](https://p4.org/wp-content/uploads/sites/53/p4-spec/docs/PSA-v1.2.html#appendix-rationale-egress-cannot-change-output-port)
+  for some explanation of why.
 - `egress_instance` (sm14) - Renamed `egress_rid` in simple_switch.
   See `egress_rid` below.
 - `instance_type` (sm14, v1m) - Contains a value that can be read by
@@ -161,7 +181,7 @@ pipeline, but should not be written to.
 in the ingress pipeline when you wish the packet to be multicast. A value of 0
 means no multicast, and calling `mark_to_drop` will set the value to 0.
 A nonzero value should be that of a valid multicast group configured
-through bmv2 runtime interfaces. See the "after-ingress pseudocode" for
+through BMv2 runtime interfaces. See the "after-ingress pseudocode" for
 relative priority of this vs. other possible packet operations at
 end of ingress.
 - `egress_rid`: needed for the multicast feature. This field is only valid in
@@ -203,7 +223,13 @@ queue.
 - `deq_qdepth`: the depth of queue when the packet was dequeued, in units of number of packets (not the total size of packets).
 - `qid`: when there are multiple queues servicing each egress port (e.g. when
 priority queueing is enabled), each queue is assigned a fixed unique id, which
-is written to this field. Otherwise, this field is set to 0.
+is written to this field. Otherwise, this field is set to 0. If 
+priority queueing is enabled, the qid also describes the priority level 
+of each queue. Starting with 0 that has the lowest priority until 
+`number_of_priority_queues - 1` that has the highest priority. The 
+number of priority queues for each port can be defined by adding 
+`--priority-queues` when running `simple_switch`.
+
 TBD: `qid` is not currently part of type `standard_metadata_t` in v1model.
 Perhaps it should be added?
 
@@ -309,7 +335,7 @@ if (resubmit was called) {
     // There are no special primitive actions built in to simple_switch 
     // for you to call to do this -- use a normal P4_16 assignment
     // statement, or P4_14 `modify_field()` primitive action.
-    Make 0 or more copies of the packet based upon the list of
+    Make 0 or more copies of the packet (including all metadata) based upon the list of
     (egress_port, egress_rid) values configured by the control plane
     for the mcast_grp value.  Enqueue each one in the appropriate
     packet buffer queue.  The instance_type of each will be
@@ -780,28 +806,18 @@ by the design of the hardware.
 
 ### Restrictions on code within actions
 
-These restrictions are actually restrictions of the `p4c` compiler, not of
-`simple_switch`.  Anyone interested in enhancing `p4c` to remove these
-restrictions should see the issues below.
+After 2024-Nov-08 when this change was made to the `p4c` BMv2 back
+end:
 
-The P4_16 language specification v1.1.0 permits `if` statements within action
-declarations.  `p4c`, when compiling for the target BMv2 simple_switch, supports
-some kinds of `if` statements, in particular ones that can be transformed into
-assignments using the ternary `condition ? true_expr : false_expr` operator.
-This is supported:
++ https://github.com/p4lang/p4c/pull/4999
 
-```
-    action foo() {
-        meta.b = meta.b + 5;
-        if (hdr.ethernet.etherType == 7) {
-            hdr.ethernet.dstAddr = 1;
-        } else {
-            hdr.ethernet.dstAddr = 2;
-        }
-    }
-```
+arbitrary `if` statements, even `if` statements nested within other
+`if` statements, should be supported correctly.
 
-but this is not, as of 2022-Jan-18:
+Before that change was made to `p4c`, there were significant
+restrictions on the kinds of `if` statements that were supported
+within the bodies of a P4 `action`, when compiling for BMv2.  For
+example, the following `action` definition was not supported:
 
 ```
     action foo() {
@@ -813,24 +829,6 @@ but this is not, as of 2022-Jan-18:
         }
     }
 ```
-
-Given the following text from the P4_16 language specification, it is likely
-that there are other P4 implementations that have limited or no support for `if`
-statements within actions:
-
-    No `switch` statements are allowed within an action --- the grammar permits
-    them, but a semantic check should reject them.  Some targets may impose
-    additional restrictions on action bodies --- e.g., only allowing
-    straight-line code, with no conditional statements or expressions.
-
-Thus P4 programs using `if` statements within actions are likely to be less
-portable than programs that avoid doing so.
-
-As mentioned above, enhancing `p4c` would enable a larger variety of `if`
-statements within actions to be supported.
-
-* [p4c issue #644](https://github.com/p4lang/p4c/issues/644)
-* [behavioral-model issue #379](https://github.com/p4lang/behavioral-model/pull/379)
 
 
 ### Restrictions on code in the `ComputeChecksum` control
@@ -1084,9 +1082,9 @@ matched.
 ```
 
 See Sections
-["Idle-timeout"](https://p4.org/p4-spec/p4runtime/v1.3.0/P4Runtime-Spec.html#sec-idle-timeout)
+["Idle-timeout"](https://p4.org/wp-content/uploads/sites/53/2024/10/P4Runtime-Spec-v1.4.1.html#sec-idle-timeout)
 and ["Table Idle Timeout
-Notification"](https://p4.org/p4-spec/p4runtime/v1.3.0/P4Runtime-Spec.html#sec-table-idle-timeout-notification)
+Notification"](https://p4.org/wp-content/uploads/sites/53/2024/10/P4Runtime-Spec-v1.4.1.html#sec-table-idle-timeout-notification)
 in the P4Runtime Specification for how a controller can configure the
 time interval for each entry it adds to such a table, and the contents
 of IdleTimeoutNotification messages sent from the switch to a
@@ -1131,7 +1129,7 @@ developers and P4 language design work group, and the decision made
 is:
 
 * Long term, the P4_16 [Portable Switch
-  Architecture](https://p4.org/specs/) uses a different mechanism for
+  Architecture](https://p4.org/specifications) uses a different mechanism for
   specifying metadata to preserve than the v1model architecture uses,
   and should work correctly.  As of October 2019 the implementation of
   PSA is not complete, so this does not help one write working code

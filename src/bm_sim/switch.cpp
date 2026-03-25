@@ -75,14 +75,14 @@ SwitchWContexts::receive(port_t port_num, const char *buffer, int len) {
 
 void
 SwitchWContexts::start_and_return() {
-  {
-    std::unique_lock<std::mutex> config_lock(config_mutex);
-    if (!config_loaded && !enable_swap) {
-      Logger::get()->error(
-          "The switch was started with no P4 and config swap is disabled");
-    }
-    config_loaded_cv.wait(config_lock, [this]() { return config_loaded; });
+  std::unique_lock<std::mutex> config_lock(config_mutex);
+  if (!config_loaded && !enable_swap) {
+    Logger::get()->error(
+        "The switch was started with no P4 and config swap is disabled");
   }
+  // We keep holding the lock as the start_and_return_ callback, which is
+  // implemented by targets, may access the P4 config for some validations.
+  config_loaded_cv.wait(config_lock, [this]() { return config_loaded; });
   start();  // DevMgr::start
   start_and_return_();
   // Starts any registered periodically-executing externs
@@ -253,7 +253,8 @@ SwitchWContexts::init_from_options_parser(
     Logger::set_logger_console();
 
   if (parser.file_logger != "")
-    Logger::set_logger_file(parser.file_logger, parser.log_flush);
+    Logger::set_logger_file(parser.file_logger, parser.log_flush,
+                            parser.log_max_size, parser.log_max_files);
 
   Logger::set_log_level(parser.log_level);
 

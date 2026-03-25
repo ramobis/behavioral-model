@@ -406,20 +406,21 @@ SimpleSwitch::enqueue(port_t egress_port, std::unique_ptr<Packet> &&packet) {
 
     PHV *phv = packet->get_phv();
 
-    if (with_queueing_metadata) {
-      phv->get_field("queueing_metadata.enq_timestamp").set(get_ts().count());
-      phv->get_field("queueing_metadata.enq_qdepth")
-          .set(egress_buffers.size(egress_port));
-    }
-
     size_t priority = phv->has_field(SSWITCH_PRIORITY_QUEUEING_SRC) ?
         phv->get_field(SSWITCH_PRIORITY_QUEUEING_SRC).get<size_t>() : 0u;
     if (priority >= nb_queues_per_port) {
       bm::Logger::get()->error("Priority out of range, dropping packet");
       return;
     }
+
+    if (with_queueing_metadata) {
+      phv->get_field("queueing_metadata.enq_timestamp").set(get_ts().count());
+      phv->get_field("queueing_metadata.enq_qdepth")
+          .set(egress_buffers.size(egress_port, priority));
+    }
+
     egress_buffers.push_front(
-        egress_port, nb_queues_per_port - 1 - priority,
+        egress_port, priority,
         std::move(packet));
 }
 
@@ -667,10 +668,10 @@ SimpleSwitch::egress_thread(size_t worker_id) {
       phv->get_field("queueing_metadata.deq_timedelta").set(
           get_ts().count() - enq_timestamp);
       phv->get_field("queueing_metadata.deq_qdepth").set(
-          egress_buffers.size(port));
+          egress_buffers.size(port, priority));
       if (phv->has_field("queueing_metadata.qid")) {
         auto &qid_f = phv->get_field("queueing_metadata.qid");
-        qid_f.set(nb_queues_per_port - 1 - priority);
+        qid_f.set(priority);
       }
     }
 

@@ -461,18 +461,62 @@ The bmv2 value set implementation does *not* support match types other than
 exact.
 
 
+### register_read, register_write, register_reset
+
+These commands allow you to access a P4 register, sometimes called a
+P4 register array, from the CLI.
+
+To read a register named `myreg1` at index 5:
 ```
-TODO: register_read
-TODO: register_reset
-TODO: register_write
+RuntimeCmd: register_read myreg1 5
+myreg1[5]= 27
+```
+
+To write that same register at index 10 with a value of 42:
+```
+RuntimeCmd: register_write myreg1 10 42
+```
+
+To write the values in _all_ indices of a register array `myreg` with
+the value 0:
+```
+RuntimeCmd: register_reset myreg1
+```
+
+
+```
 TODO: reset_state
 TODO: serialize_state
 TODO: set_crc16_parameters
 TODO: set_crc32_parameters
-TODO: set_queue_depth [simple_switch_CLI only]
-TODO: set_queue_rate [simple_switch_CLI only]
 TODO: shell
 ```
+
+### set_queue_depth [simple_switch_CLI only]
+```
+RuntimeCmd: help set_queue_depth
+Set depth of one / all egress queue(s): set_queue_depth <nb_pkts> [<egress_port> [<priority>]]
+```
+
+This command sets the maximum depth of queue(s) to `nb_pkts` in units of 
+number of packets. The affected priority queue is identified by `egress_port` 
+and `priority`. If `priority` is not given, this command sets the maximum depth 
+for all queues in the given `egress_port`. If both `priority` and 
+`egress_port` are not given, this command sets the maximum depth for all queues. 
+The `priority` mentioned here is the same as qid in the queueing_metadata.
+
+### set_queue_rate [simple_switch_CLI only]
+```
+RuntimeCmd: help set_queue_rate
+Set rate of one / all egress queue(s): set_queue_rate <rate_pps> [<egress_port> [<priority>]]
+```
+
+This command sets the rate at which queue(s) is(are) consumed to `rate_pps`, 
+in units of packet per second. The affected priority queue is identified by 
+`egress_port` and `priority`. If `priority` is not given, this command sets 
+the rate for all queues in the given `egress_port`. If both `priority` and 
+`egress_port` are not given, this command sets the rate for all queues. 
+The `priority` mentioned here is the same as qid in the queueing_metadata.
 
 ### show_actions
 
