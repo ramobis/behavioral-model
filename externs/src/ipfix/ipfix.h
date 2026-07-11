@@ -3,6 +3,9 @@
 
 #include <bm/bm_sim/data.h>
 #include <cstdint>
+#include <list>
+#include <map>
+#include <set>
 
 // Duration specified in milliseconds
 #define FLOW_EXPORT_RECORD_MAX_IDLE_TIME 10000
@@ -11,7 +14,7 @@
 
 // IPFIX
 #define IPFIX_VERSION_NUMBER 0x000a
-#define IPFIX_COLLECTOR_IP "10.0.2.2"
+#define IPFIX_COLLECTOR_IP "127.0.0.1"
 #define IPFIX_RAW_EXPORT_SAMPLE_RATE 50
 // Duration specifed in seconds
 #define IPFIX_TEMPLATE_TRANSMISSION_INTERVAL 20
